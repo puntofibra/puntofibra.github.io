@@ -1,1 +1,10 @@
-
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.puntofibra.signflow",
+      "sha256_cert_fingerprints": ["98:8F:97:F0:0A:A5:FC:9F:A2:38:41:4D:CA:71:A1:B0:3A:D0:C3:92:7F:18:C9:59:C0:4B:C1:05:B2:FE:A5:F5"]
+    }
+  }
+]
