@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>TPV Puntofibra</title>
+<style>
+:root{
+  --bg:#0f172a; --panel:#1e293b; --panel2:#334155; --linea:#475569;
+  --txt:#e2e8f0; --suave:#94a3b8; --ok:#22c55e; --acento:#38bdf8; --mal:#ef4444;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{
+  background:var(--bg);color:var(--txt);
+  font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  display:flex;flex-direction:column;overflow:hidden;
+}
+header{
+  display:flex;align-items:center;gap:12px;padding:10px 14px;
+  background:var(--panel);border-bottom:1px solid var(--linea);flex:none;
+}
+header h1{font-size:17px;margin:0;font-weight:700;letter-spacing:.5px}
+header .sep{flex:1}
+.chip{
+  font-size:12px;padding:4px 10px;border-radius:999px;
+  background:var(--panel2);color:var(--suave);white-space:nowrap;
+}
+.chip.on{background:#064e3b;color:#6ee7b7}
+.chip.off{background:#7f1d1d;color:#fca5a5}
+button{
+  font:inherit;color:var(--txt);background:var(--panel2);
+  border:1px solid var(--linea);border-radius:10px;padding:9px 13px;cursor:pointer;
+}
+button:hover{border-color:var(--acento)}
+button:active{transform:translateY(1px)}
+button.primario{background:var(--ok);border-color:var(--ok);color:#052e16;font-weight:700}
+button.peligro{background:#7f1d1d;border-color:#991b1b;color:#fecaca}
+button:disabled{opacity:.45;cursor:not-allowed}
+
+main{flex:1;display:flex;min-height:0}
+#zonaArticulos{flex:1;overflow-y:auto;padding:12px}
+#tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+#tabs button{padding:7px 14px;border-radius:999px;font-size:14px}
+#tabs button.sel{background:var(--acento);border-color:var(--acento);color:#082f49;font-weight:700}
+#rejilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.art{
+  background:var(--panel);border:1px solid var(--linea);border-radius:12px;
+  padding:12px;text-align:left;min-height:78px;display:flex;flex-direction:column;
+  justify-content:space-between;gap:6px;
+}
+.art .n{font-size:14px;font-weight:600;line-height:1.25}
+.art .p{font-size:17px;font-weight:700;color:var(--acento)}
+
+aside{
+  width:370px;flex:none;background:var(--panel);border-left:1px solid var(--linea);
+  display:flex;flex-direction:column;min-height:0;
+}
+#carro{flex:1;overflow-y:auto;padding:10px}
+.vacio{color:var(--suave);text-align:center;padding:40px 10px;font-size:14px}
+.li{display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--panel2)}
+.li .d{flex:1;min-width:0}
+.li .d b{display:block;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.li .d small{color:var(--suave);font-size:12px}
+.li .imp{font-weight:700;white-space:nowrap}
+.li button{padding:3px 9px;border-radius:8px;font-size:15px;line-height:1}
+#totales{padding:12px 14px;border-top:1px solid var(--linea);flex:none}
+#totales .f{display:flex;justify-content:space-between;font-size:13px;color:var(--suave);margin-bottom:3px}
+#totales .t{display:flex;justify-content:space-between;font-size:26px;font-weight:800;margin-top:6px}
+#acciones{padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:none;
+  border-top:1px solid var(--linea)}
+#acciones .ancho{grid-column:1/-1}
+#acciones button{padding:13px;font-size:15px}
+
+.capa{position:fixed;inset:0;background:rgba(2,6,23,.82);display:none;
+  align-items:center;justify-content:center;padding:16px;z-index:50}
+.capa.ver{display:flex}
+.caja{background:var(--panel);border:1px solid var(--linea);border-radius:16px;
+  padding:20px;width:100%;max-width:400px}
+.caja h2{margin:0 0 14px;font-size:17px}
+.caja label{display:block;font-size:13px;color:var(--suave);margin:10px 0 4px}
+.caja input,.caja select{
+  width:100%;padding:11px;font:inherit;border-radius:10px;
+  background:var(--bg);color:var(--txt);border:1px solid var(--linea);
+}
+.caja .bts{display:flex;gap:8px;margin-top:18px}
+.caja .bts button{flex:1;padding:12px}
+#aviso{
+  position:fixed;left:50%;bottom:22px;transform:translateX(-50%);
+  background:var(--panel2);border:1px solid var(--linea);border-radius:10px;
+  padding:11px 18px;max-width:90vw;text-align:center;display:none;z-index:60;font-size:14px;
+}
+#aviso.ver{display:block}
+#aviso.err{background:#7f1d1d;border-color:#991b1b;color:#fecaca}
+#aviso.bien{background:#064e3b;border-color:#065f46;color:#a7f3d0}
+@media(max-width:820px){
+  main{flex-direction:column}
+  aside{width:auto;border-left:none;border-top:1px solid var(--linea);max-height:52vh}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>TPV PUNTOFIBRA</h1>
+  <span class="chip" id="chipPruebas" hidden>PRUEBAS</span>
+  <span class="sep"></span>
+  <span class="chip" id="chipImpresora">Impresora sin conectar</span>
+  <button id="btConectar">Conectar impresora</button>
+  <button id="btTest">Probar</button>
+  <button id="btConfig">Recargar config</button>
+</header>
+
+<main>
+  <section id="zonaArticulos">
+    <div id="tabs"></div>
+    <div id="rejilla"></div>
+  </section>
+
+  <aside>
+    <div id="carro"><div class="vacio">Toca un articulo para empezar</div></div>
+    <div id="totales">
+      <div id="desglose"></div>
+      <div class="t"><span>TOTAL</span><span id="total">0,00 &euro;</span></div>
+    </div>
+    <div id="acciones">
+      <button id="btManual">Importe libre</button>
+      <button id="btVaciar" class="peligro">Vaciar</button>
+      <button id="btCobrar" class="primario ancho">COBRAR E IMPRIMIR</button>
+    </div>
+  </aside>
+</main>
+
+<div class="capa" id="capaManual">
+  <div class="caja">
+    <h2>Linea de importe libre</h2>
+    <label>Concepto</label>
+    <input id="mConcepto" type="text" placeholder="Ej: Reparacion varios" maxlength="60">
+    <label>Importe con IVA (&euro;)</label>
+    <input id="mPrecio" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0,00">
+    <label>IVA</label>
+    <select id="mIva">
+      <option value="21">21 %</option>
+      <option value="10">10 %</option>
+      <option value="4">4 %</option>
+      <option value="0">0 %</option>
+    </select>
+    <div class="bts">
+      <button onclick="cerrar('capaManual')">Cancelar</button>
+      <button class="primario" id="mAceptar">A&ntilde;adir</button>
+    </div>
+  </div>
+</div>
+
+<div class="capa" id="capaPago">
+  <div class="caja">
+    <h2>Cobrar</h2>
+    <label>Forma de pago</label>
+    <select id="pForma">
+      <option>Efectivo</option>
+      <option>Tarjeta</option>
+      <option>Bizum</option>
+      <option>Transferencia</option>
+    </select>
+    <div class="bts">
+      <button onclick="cerrar('capaPago')">Cancelar</button>
+      <button class="primario" id="pAceptar">Cobrar</button>
+    </div>
+  </div>
+</div>
+
+<div id="aviso"></div>
+
+<script>
+/* ==========================================================
+   TPV PUNTOFIBRA — frontend
+   La API es el Apps Script; la impresion va por WebUSB (ESC/POS).
+   ========================================================== */
+
+const API = 'https://script.google.com/macros/s/AKfycbwDv4fsrYpmwDpzOlfpj4JGcdP4zJ7TWrSr1GNNI8u0rggS9xvYfPIUHNt_m6JTvd79qQ/exec';
+
+// Filtro de la impresora. Si algun dia cambias de modelo, aqui.
+const FILTROS_USB = [{ vendorId: 0x1fc9 }];   // iggual TP8001 (NXP)
+// Pagina de codigos del ESC/POS: 16 = WPC1252 (acentos de Espana).
+const PAGINA_CODIGOS = 16;
+
+let CONF = null;
+let CARRO = [];
+let CATEGORIA = null;
+let USB = { dispositivo: null, interfaz: null, salida: null };
+
+/* ---------- utilidades ---------- */
+const $ = id => document.getElementById(id);
+const eur = n => (Math.round(n * 100) / 100).toFixed(2).replace('.', ',') + ' €';
+
+function avisar(txt, tipo) {
+  const a = $('aviso');
+  a.textContent = txt;
+  a.className = 'ver ' + (tipo || '');
+  clearTimeout(avisar._t);
+  avisar._t = setTimeout(() => { a.className = ''; }, tipo === 'err' ? 7000 : 3500);
+}
+function abrir(id) { $(id).classList.add('ver'); }
+function cerrar(id) { $(id).classList.remove('ver'); }
+
+/* ---------- API por JSONP ---------- */
+let jsonpN = 0;
+function api(params) {
+  return new Promise((resolve, reject) => {
+    const cb = 'tpvcb' + (++jsonpN) + '_' + Date.now();
+    const s = document.createElement('script');
+    const t = setTimeout(() => { limpiar(); reject(new Error('La API no responde (tiempo agotado)')); }, 25000);
+    function limpiar() { clearTimeout(t); delete window[cb]; if (s.parentNode) s.parentNode.removeChild(s); }
+    window[cb] = data => {
+      limpiar();
+      if (data && data.ok === false) reject(new Error(data.error || 'Error en el servidor'));
+      else resolve(data);
+    };
+    const q = Object.keys(params).map(k => encodeURIComponent(k) + '=' + encodeURIComponent(params[k]));
+    q.push('callback=' + cb);
+    s.src = API + '?' + q.join('&');
+    s.onerror = () => { limpiar(); reject(new Error('No se ha podido contactar con la API')); };
+    document.head.appendChild(s);
+  });
+}
+
+/* ---------- carga de configuracion ---------- */
+async function cargarConfig(avisando) {
+  try {
+    const r = await api({ accion: 'config' });
+    CONF = r.config;
+    $('chipPruebas').hidden = !CONF.pruebas;
+    pintarTabs();
+    pintarArticulos();
+    if (avisando) avisar('Configuracion recargada', 'bien');
+  } catch (e) {
+    avisar('Error cargando la configuracion: ' + e.message, 'err');
+  }
+}
+
+function categorias() {
+  const c = [];
+  (CONF.articulos || []).forEach(a => { if (c.indexOf(a.categoria) < 0) c.push(a.categoria); });
+  return c;
+}
+
+function pintarTabs() {
+  const cats = categorias();
+  if (CATEGORIA === null || cats.indexOf(CATEGORIA) < 0) CATEGORIA = cats[0] || null;
+  $('tabs').innerHTML = '';
+  if (cats.length < 2) return;
+  cats.forEach(c => {
+    const b = document.createElement('button');
+    b.textContent = c;
+    if (c === CATEGORIA) b.className = 'sel';
+    b.onclick = () => { CATEGORIA = c; pintarTabs(); pintarArticulos(); };
+    $('tabs').appendChild(b);
+  });
+}
+
+function pintarArticulos() {
+  const r = $('rejilla');
+  r.innerHTML = '';
+  const cats = categorias();
+  const lista = (CONF.articulos || []).filter(a => cats.length < 2 || a.categoria === CATEGORIA);
+  if (!lista.length) {
+    r.innerHTML = '<div class="vacio">No hay articulos en la hoja Articulos</div>';
+    return;
+  }
+  lista.forEach(a => {
+    const b = document.createElement('button');
+    b.className = 'art';
+    b.innerHTML = '<span class="n"></span><span class="p"></span>';
+    b.querySelector('.n').textContent = a.nombre;
+    b.querySelector('.p').textContent = eur(a.precio);
+    b.onclick = () => anadir(a);
+    r.appendChild(b);
+  });
+}
+
+/* ---------- carrito ---------- */
+function anadir(a) {
+  const clave = a.codigo || a.nombre;
+  const hay = CARRO.find(l => !l.manual && (l.codigo || l.concepto) === clave);
+  if (hay) hay.cantidad++;
+  else CARRO.push({ codigo: a.codigo, concepto: a.nombre, precio: a.precio, iva: a.iva, cantidad: 1, manual: false });
+  pintarCarro();
+}
+
+function pintarCarro() {
+  const c = $('carro');
+  if (!CARRO.length) {
+    c.innerHTML = '<div class="vacio">Toca un articulo para empezar</div>';
+  } else {
+    c.innerHTML = '';
+    CARRO.forEach((l, i) => {
+      const d = document.createElement('div');
+      d.className = 'li';
+      d.innerHTML =
+        '<button data-a="menos">&minus;</button>' +
+        '<div class="d"><b></b><small></small></div>' +
+        '<button data-a="mas">+</button>' +
+        '<span class="imp"></span>' +
+        '<button data-a="quitar" title="Quitar">&times;</button>';
+      d.querySelector('b').textContent = l.concepto;
+      d.querySelector('small').textContent = l.cantidad + ' x ' + eur(l.precio) + '  ·  IVA ' + l.iva + '%';
+      d.querySelector('.imp').textContent = eur(l.precio * l.cantidad);
+      d.querySelector('[data-a=menos]').onclick = () => { if (--l.cantidad <= 0) CARRO.splice(i, 1); pintarCarro(); };
+      d.querySelector('[data-a=mas]').onclick = () => { l.cantidad++; pintarCarro(); };
+      d.querySelector('[data-a=quitar]').onclick = () => { CARRO.splice(i, 1); pintarCarro(); };
+      c.appendChild(d);
+    });
+  }
+  pintarTotales();
+}
+
+/* Mismo criterio que el servidor: base y cuota salen del TOTAL de cada grupo. */
+function calcular() {
+  const g = {};
+  CARRO.forEach(l => {
+    const cent = Math.round(l.precio * 100) * l.cantidad;
+    g[l.iva] = (g[l.iva] || 0) + cent;
+  });
+  let total = 0, base = 0, cuota = 0;
+  const filas = [];
+  Object.keys(g).sort((a, b) => a - b).forEach(k => {
+    const tot = g[k], b = Math.round(tot / (1 + Number(k) / 100)), q = tot - b;
+    filas.push({ tipo: Number(k), base: b / 100, cuota: q / 100 });
+    total += tot; base += b; cuota += q;
+  });
+  return { filas, base: base / 100, cuota: cuota / 100, total: total / 100 };
+}
+
+function pintarTotales() {
+  const c = calcular();
+  $('total').textContent = eur(c.total);
+  $('desglose').innerHTML = c.filas.map(f =>
+    '<div class="f"><span>Base ' + f.tipo + '%</span><span>' + eur(f.base) +
+    '</span></div><div class="f"><span>IVA ' + f.tipo + '%</span><span>' + eur(f.cuota) + '</span></div>'
+  ).join('');
+  $('btCobrar').disabled = !CARRO.length;
+}
+
+/* ==========================================================
+   IMPRESION: ESC/POS por WebUSB
+   ========================================================== */
+
+const ESC = 0x1b, GS = 0x1d;
+
+/* Codifica texto a bytes para la impresora (WPC1252 / Latin-1). */
+function bytesTexto(txt) {
+  const fuera = [];
+  for (const ch of String(txt)) {
+    const c = ch.codePointAt(0);
+    if (c < 0x80) { fuera.push(c); continue; }
+    if (c === 0x20ac) { fuera.push(0x80); continue; }        // €
+    if (c <= 0xff) { fuera.push(c); continue; }              // acentos latinos
+    const plano = ch.normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const p = plano.codePointAt(0);
+    fuera.push(p < 0x100 ? p : 0x3f);
+  }
+  return fuera;
+}
+
+class Cinta {
+  constructor() { this.b = []; }
+  crudo(...v) { v.forEach(x => this.b.push(x)); return this; }
+  texto(t) { this.b = this.b.concat(bytesTexto(t)); return this; }
+  linea(t) { return this.texto(t === undefined ? '' : t).crudo(0x0a); }
+  iniciar() { return this.crudo(ESC, 0x40).crudo(ESC, 0x74, PAGINA_CODIGOS); }
+  alinear(n) { return this.crudo(ESC, 0x61, n); }             // 0 izq 1 centro 2 der
+  negrita(s) { return this.crudo(ESC, 0x45, s ? 1 : 0); }
+  tamano(n) { return this.crudo(GS, 0x21, n); }               // 0x00 normal, 0x11 doble
+  avanzar(n) { return this.crudo(ESC, 0x64, n); }
+  cortar() { return this.crudo(GS, 0x56, 0x42, 0x03); }
+  cajon(pin) { return this.crudo(ESC, 0x70, pin ? 1 : 0, 0x19, 0xfa); }
+  qr(dato, modulo) {
+    const d = bytesTexto(dato);
+    const len = d.length + 3;
+    this.crudo(GS, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00);            // modelo 2
+    this.crudo(GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, modulo);                // tamano modulo
+    this.crudo(GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x31);                  // correccion M
+    this.crudo(GS, 0x28, 0x6b, len & 0xff, (len >> 8) & 0xff, 0x31, 0x50, 0x30);
+    this.b = this.b.concat(d);
+    return this.crudo(GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30);           // imprimir
+  }
+  bytes() { return new Uint8Array(this.b); }
+}
+
+/* Reparte "izquierda .... derecha" en el ancho dado. */
+function dosColumnas(izq, der, ancho) {
+  izq = String(izq); der = String(der);
+  const hueco = ancho - der.length;
+  if (izq.length > hueco - 1) izq = izq.substring(0, Math.max(0, hueco - 1));
+  return izq + ' '.repeat(Math.max(1, ancho - izq.length - der.length)) + der;
+}
+function centrar(t, ancho) {
+  t = String(t);
+  if (t.length >= ancho) return t.substring(0, ancho);
+  return ' '.repeat(Math.floor((ancho - t.length) / 2)) + t;
+}
+function raya(ancho) { return '-'.repeat(ancho); }
+
+/* ---------- conexion USB ---------- */
+function estadoImpresora(txt, clase) {
+  const c = $('chipImpresora');
+  c.textContent = txt;
+  c.className = 'chip' + (clase ? ' ' + clase : '');
+}
+
+async function prepararDispositivo(d) {
+  if (!d.opened) await d.open();
+  if (d.configuration === null) await d.selectConfiguration(1);
+
+  let iNum = null, ep = null;
+  for (const cfg of d.configurations) {
+    for (const itf of cfg.interfaces) {
+      for (const alt of itf.alternates) {
+        const salida = alt.endpoints.find(e => e.direction === 'out' && e.type === 'bulk');
+        if (salida && iNum === null) { iNum = itf.interfaceNumber; ep = salida.endpointNumber; }
+      }
+    }
+  }
+  if (iNum === null) throw new Error('La impresora no expone ninguna salida de datos');
+
+  try { await d.claimInterface(iNum); }
+  catch (e) { throw new Error('Windows no suelta la impresora. Repasa el paso de Zadig (WinUSB). Detalle: ' + e.message); }
+
+  USB = { dispositivo: d, interfaz: iNum, salida: ep };
+  estadoImpresora('Impresora lista', 'on');
+}
+
+async function conectar(pedir) {
+  if (!('usb' in navigator)) {
+    estadoImpresora('Este navegador no vale', 'off');
+    throw new Error('Este navegador no tiene WebUSB. Usa Chrome o Edge en el PC.');
+  }
+  if (USB.dispositivo && USB.dispositivo.opened) return USB.dispositivo;
+
+  let d = null;
+  const ya = await navigator.usb.getDevices();
+  if (ya.length) d = ya[0];
+  if (!d) {
+    if (!pedir) throw new Error('Impresora sin conectar. Pulsa "Conectar impresora".');
+    try { d = await navigator.usb.requestDevice({ filters: FILTROS_USB }); }
+    catch (e) { d = await navigator.usb.requestDevice({ filters: [] }); }
+  }
+  await prepararDispositivo(d);
+  return d;
+}
+
+async function enviar(bytes) {
+  await conectar(false);
+  const trozo = 4096;
+  for (let i = 0; i < bytes.length; i += trozo) {
+    await USB.dispositivo.transferOut(USB.salida, bytes.slice(i, i + trozo));
+  }
+}
+
+/* ---------- construccion del ticket ---------- */
+function cintaTicket(t, c) {
+  const A = c.ancho || 48;
+  const k = new Cinta();
+  k.iniciar().alinear(1);
+
+  k.tamano(0x11).negrita(1).linea(c.cabecera).negrita(0).tamano(0x00);
+  (c.subtitulos || []).forEach(s => k.linea(s));
+  if (c.direccion) k.linea(c.direccion);
+  if (c.nif) k.linea('NIF: ' + c.nif);
+  if (c.pruebas && c.avisoPruebas) { k.linea(); k.negrita(1).linea(c.avisoPruebas).negrita(0); }
+
+  k.alinear(0).linea().linea(raya(A));
+  k.linea(dosColumnas('Ticket: ' + t.numeroCompleto, t.fecha, A));
+  k.linea(raya(A));
+
+  (t.lineas || []).forEach(l => {
+    k.linea(l.concepto);
+    k.linea(dosColumnas('   ' + l.cantidad + ' x ' + eur(l.precio), eur(l.importe), A));
+  });
+
+  k.linea(raya(A));
+  k.linea(dosColumnas('Tipo', 'Base        Cuota', A));
+  (t.desglose || []).forEach(d => {
+    k.linea(dosColumnas('IVA ' + d.tipo + '%',
+      String(eur(d.base)).padStart(10) + '  ' + String(eur(d.cuota)).padStart(9), A));
+  });
+  k.linea(dosColumnas('Suma', eur(t.base) + '  ' + eur(t.cuota), A));
+  k.linea(raya(A));
+
+  k.alinear(2).tamano(0x11).negrita(1).linea('TOTAL ' + eur(t.total)).negrita(0).tamano(0x00);
+  k.alinear(0).linea(dosColumnas('Forma de pago', t.pago, A));
+
+  if (t.qr) { k.linea().alinear(1).qr(t.qr, c.qrTamano || 6).linea(); }
+
+  k.alinear(1).linea();
+  (c.pie || []).forEach(p => k.linea(p));
+  k.avanzar(4);
+  if (c.corte) k.cortar();
+  return k.bytes();
+}
+
+async function imprimirTicket(t, c) {
+  await conectar(true);
+  const copias = Math.max(1, c.copias || 1);
+  for (let i = 0; i < copias; i++) await enviar(cintaTicket(t, c));
+  if (c.cajonAuto) await enviar(new Cinta().cajon(c.cajonPin).bytes());
+}
+
+/* ---------- prueba de impresora ---------- */
+async function probar() {
+  try {
+    await conectar(true);
+    const c = CONF || { ancho: 48, cajonPin: 0 };
+    const A = c.ancho || 48;
+    const k = new Cinta();
+    k.iniciar().alinear(1)
+      .tamano(0x11).negrita(1).linea('PRUEBA DE IMPRESORA').negrita(0).tamano(0x00)
+      .linea(new Date().toLocaleString('es-ES'))
+      .alinear(0).linea().linea(raya(A))
+      .linea('Acentos: aeiou AEIOU n N ' + 'áéíóú ÁÉÍÓÚ ñ Ñ €')
+      .linea(dosColumnas('Columna izquierda', 'derecha', A))
+      .linea(raya(A))
+      .linea('Ancho configurado: ' + A + ' caracteres')
+      .linea('Si esta raya llega justo al borde,')
+      .linea('el ancho es el correcto.')
+      .avanzar(4);
+    if (c.corte !== false) k.cortar();
+    await enviar(k.bytes());
+    await enviar(new Cinta().cajon(c.cajonPin || 0).bytes());
+    avisar('Prueba enviada. Mira el papel y el cajon.', 'bien');
+  } catch (e) {
+    avisar(e.message, 'err');
+  }
+}
+
+/* ---------- cobrar ---------- */
+async function cobrar(formaPago) {
+  const bt = $('btCobrar');
+  bt.disabled = true;
+  const antes = bt.textContent;
+  bt.textContent = 'Cobrando...';
+  try {
+    const lineas = CARRO.map(l => ({
+      codigo: l.codigo || '', concepto: l.concepto, cantidad: l.cantidad,
+      precio: l.precio, iva: l.iva, manual: !!l.manual
+    }));
+    const r = await api({ accion: 'venta', lineas: JSON.stringify(lineas), pago: formaPago });
+    const t = r.ticket, c = r.config;
+    avisar('Ticket ' + t.numeroCompleto + ' guardado. Imprimiendo...', 'bien');
+    try {
+      await imprimirTicket(t, c);
+      avisar('Ticket ' + t.numeroCompleto + ' impreso  ·  ' + eur(t.total), 'bien');
+    } catch (e) {
+      avisar('El ticket ' + t.numeroCompleto + ' SI se ha guardado, pero no se ha podido imprimir: ' + e.message, 'err');
+    }
+    CARRO = [];
+    pintarCarro();
+  } catch (e) {
+    avisar('No se ha podido cobrar: ' + e.message, 'err');
+  } finally {
+    bt.textContent = antes;
+    pintarTotales();
+  }
+}
+
+/* ---------- eventos ---------- */
+$('btConectar').onclick = async () => {
+  try { await conectar(true); avisar('Impresora conectada', 'bien'); }
+  catch (e) { avisar(e.message, 'err'); }
+};
+$('btTest').onclick = probar;
+$('btConfig').onclick = () => cargarConfig(true);
+$('btVaciar').onclick = () => { if (CARRO.length && confirm('Vaciar el ticket?')) { CARRO = []; pintarCarro(); } };
+$('btManual').onclick = () => {
+  $('mConcepto').value = ''; $('mPrecio').value = '';
+  $('mIva').value = String((CONF && CONF.ivaDefecto) || 21);
+  abrir('capaManual'); setTimeout(() => $('mConcepto').focus(), 80);
+};
+$('mAceptar').onclick = () => {
+  const concepto = $('mConcepto').value.trim() || 'Varios';
+  const precio = Number(String($('mPrecio').value).replace(',', '.'));
+  if (!isFinite(precio) || precio <= 0) { avisar('Pon un importe valido', 'err'); return; }
+  CARRO.push({ codigo: '', concepto, precio: Math.round(precio * 100) / 100,
+               iva: Number($('mIva').value), cantidad: 1, manual: true });
+  cerrar('capaManual'); pintarCarro();
+};
+$('btCobrar').onclick = () => { if (CARRO.length) abrir('capaPago'); };
+$('pAceptar').onclick = () => { cerrar('capaPago'); cobrar($('pForma').value); };
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { cerrar('capaManual'); cerrar('capaPago'); }
+});
+
+if ('usb' in navigator) {
+  navigator.usb.getDevices().then(ds => {
+    if (ds.length) prepararDispositivo(ds[0]).catch(() => estadoImpresora('Impresora sin conectar'));
+  });
+} else {
+  estadoImpresora('Sin WebUSB: usa Chrome o Edge', 'off');
+}
+
+cargarConfig(false);
+</script>
+</body>
+</html>
