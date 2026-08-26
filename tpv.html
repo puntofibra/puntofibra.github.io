@@ -109,6 +109,7 @@ aside{
   <button id="btConectar">Conectar impresora</button>
   <button id="btTest">Probar</button>
   <button id="btReimprimir">Reimprimir</button>
+  <button id="btCajon">Abrir caj&oacute;n</button>
   <button id="btConfig">Recargar config</button>
 </header>
 
@@ -607,6 +608,18 @@ async function reimprimir() {
   }
 }
 
+/* ---------- abrir el cajon sin hacer ticket ---------- */
+async function abrirCajon() {
+  try {
+    await conectar(true);
+    const pin = (CONF && CONF.cajonPin) ? 1 : 0;
+    await enviar(new Cinta().cajon(pin).bytes());
+    avisar('Cajon abierto', 'bien');
+  } catch (e) {
+    avisar('No se ha podido abrir el cajon: ' + e.message, 'err');
+  }
+}
+
 /* ---------- eventos ---------- */
 $('btConectar').onclick = async () => {
   try { await conectar(true); avisar('Impresora conectada', 'bien'); }
@@ -614,6 +627,7 @@ $('btConectar').onclick = async () => {
 };
 $('btTest').onclick = probar;
 $('btReimprimir').onclick = reimprimir;
+$('btCajon').onclick = abrirCajon;
 $('btConfig').onclick = () => cargarConfig(true);
 $('btVaciar').onclick = () => { if (CARRO.length && confirm('Vaciar el ticket?')) { CARRO = []; pintarCarro(); } };
 $('btManual').onclick = () => {
