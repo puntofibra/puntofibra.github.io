@@ -108,6 +108,7 @@ aside{
   <span class="chip" id="chipImpresora">Impresora sin conectar</span>
   <button id="btConectar">Conectar impresora</button>
   <button id="btTest">Probar</button>
+  <button id="btReimprimir">Reimprimir</button>
   <button id="btConfig">Recargar config</button>
 </header>
 
@@ -188,6 +189,7 @@ let CONF = null;
 let CARRO = [];
 let CATEGORIA = null;
 let USB = { dispositivo: null, interfaz: null, salida: null };
+let ULTIMO = null;          // ultimo ticket cobrado, para reimprimir sin pedir nada
 
 /* ---------- utilidades ---------- */
 const $ = id => document.getElementById(id);
@@ -198,7 +200,7 @@ function avisar(txt, tipo) {
   a.textContent = txt;
   a.className = 'ver ' + (tipo || '');
   clearTimeout(avisar._t);
-  avisar._t = setTimeout(() => { a.className = ''; }, tipo === 'err' ? 7000 : 3500);
+  avisar._t = setTimeout(() => { a.className = ''; }, tipo === 'err' ? 9000 : 3500);
 }
 function abrir(id) { $(id).classList.add('ver'); }
 function cerrar(id) { $(id).classList.remove('ver'); }
@@ -458,7 +460,7 @@ async function enviar(bytes) {
 }
 
 /* ---------- construccion del ticket ---------- */
-function cintaTicket(t, c) {
+function cintaTicket(t, c, esCopia) {
   const A = c.ancho || 48;
   const k = new Cinta();
   k.iniciar().alinear(1);
@@ -468,6 +470,7 @@ function cintaTicket(t, c) {
   if (c.direccion) k.linea(c.direccion);
   if (c.nif) k.linea('NIF: ' + c.nif);
   if (c.pruebas && c.avisoPruebas) { k.linea(); k.negrita(1).linea(c.avisoPruebas).negrita(0); }
+  if (esCopia) { k.linea(); k.negrita(1).linea('*** COPIA ***').negrita(0); }
 
   k.alinear(0).linea().linea(raya(A));
   k.linea(dosColumnas('Ticket: ' + t.numeroCompleto, t.fecha, A));
@@ -499,10 +502,9 @@ function cintaTicket(t, c) {
   return k.bytes();
 }
 
-async function imprimirTicket(t, c) {
-  await conectar(true);
+async function imprimirTicket(t, c, esCopia) {
   const copias = Math.max(1, c.copias || 1);
-  for (let i = 0; i < copias; i++) await enviar(cintaTicket(t, c));
+  for (let i = 0; i < copias; i++) await enviar(cintaTicket(t, c, esCopia));
   if (c.cajonAuto) await enviar(new Cinta().cajon(c.cajonPin).bytes());
 }
 
@@ -535,6 +537,17 @@ async function probar() {
 
 /* ---------- cobrar ---------- */
 async function cobrar(formaPago) {
+  // OJO: el permiso de USB solo se puede pedir mientras dura el gesto del clic.
+  // Por eso la impresora se conecta ANTES de hablar con la API.
+  let hayImpresora = true;
+  try {
+    await conectar(true);
+  } catch (e) {
+    hayImpresora = false;
+    if (!confirm('No se ha podido conectar con la impresora:\n\n' + e.message +
+                 '\n\nQuieres guardar la venta igualmente, sin imprimir?')) return;
+  }
+
   const bt = $('btCobrar');
   bt.disabled = true;
   const antes = bt.textContent;
@@ -546,13 +559,20 @@ async function cobrar(formaPago) {
     }));
     const r = await api({ accion: 'venta', lineas: JSON.stringify(lineas), pago: formaPago });
     const t = r.ticket, c = r.config;
-    avisar('Ticket ' + t.numeroCompleto + ' guardado. Imprimiendo...', 'bien');
-    try {
-      await imprimirTicket(t, c);
-      avisar('Ticket ' + t.numeroCompleto + ' impreso  ·  ' + eur(t.total), 'bien');
-    } catch (e) {
-      avisar('El ticket ' + t.numeroCompleto + ' SI se ha guardado, pero no se ha podido imprimir: ' + e.message, 'err');
+    ULTIMO = { t: t, c: c };
+
+    if (hayImpresora) {
+      try {
+        await imprimirTicket(t, c, false);
+        avisar('Ticket ' + t.numeroCompleto + ' impreso  ·  ' + eur(t.total), 'bien');
+      } catch (e) {
+        avisar('El ticket ' + t.numeroCompleto + ' SI se ha guardado, pero no ha salido el papel: ' +
+               e.message + '  ·  Puedes darle a Reimprimir.', 'err');
+      }
+    } else {
+      avisar('Ticket ' + t.numeroCompleto + ' guardado SIN imprimir. Conecta la impresora y dale a Reimprimir.', 'err');
     }
+
     CARRO = [];
     pintarCarro();
   } catch (e) {
@@ -563,12 +583,37 @@ async function cobrar(formaPago) {
   }
 }
 
+/* ---------- reimprimir ---------- */
+async function reimprimir() {
+  try { await conectar(true); }
+  catch (e) { avisar(e.message, 'err'); return; }
+
+  const sugerido = ULTIMO ? ULTIMO.t.numeroCompleto : '';
+  const num = String(prompt('Numero de ticket a reimprimir (por ejemplo A-00001):', sugerido) || '').trim();
+  if (!num) return;
+
+  try {
+    if (ULTIMO && num.toUpperCase() === String(ULTIMO.t.numeroCompleto).toUpperCase()) {
+      const c = Object.assign({}, ULTIMO.c, { cajonAuto: false, copias: 1 });
+      await imprimirTicket(ULTIMO.t, c, true);
+    } else {
+      const r = await api({ accion: 'ticket', numero: num });
+      const c = Object.assign({}, CONF, r.emisor, { cajonAuto: false, copias: 1 });
+      await imprimirTicket(r.ticket, c, true);
+    }
+    avisar('Ticket ' + num + ' reimpreso', 'bien');
+  } catch (e) {
+    avisar('No se ha podido reimprimir: ' + e.message, 'err');
+  }
+}
+
 /* ---------- eventos ---------- */
 $('btConectar').onclick = async () => {
   try { await conectar(true); avisar('Impresora conectada', 'bien'); }
   catch (e) { avisar(e.message, 'err'); }
 };
 $('btTest').onclick = probar;
+$('btReimprimir').onclick = reimprimir;
 $('btConfig').onclick = () => cargarConfig(true);
 $('btVaciar').onclick = () => { if (CARRO.length && confirm('Vaciar el ticket?')) { CARRO = []; pintarCarro(); } };
 $('btManual').onclick = () => {
