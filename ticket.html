@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tu ticket · Puntofibra</title>
+<style>
+:root{
+  --fondo:#e7e5e4; --papel:#ffffff; --tinta:#1c1917; --suave:#78716c;
+  --linea:#d6d3d1; --acento:#0369a1; --aviso:#b45309;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --fondo:#0c0a09; --papel:#1c1917; --tinta:#f5f5f4; --suave:#a8a29e;
+         --linea:#44403c; --acento:#38bdf8; --aviso:#fbbf24; }
+}
+*{box-sizing:border-box}
+body{
+  margin:0;padding:18px 12px 40px;background:var(--fondo);color:var(--tinta);
+  font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+.papel{
+  max-width:420px;margin:0 auto;background:var(--papel);border-radius:14px;
+  padding:26px 22px;box-shadow:0 8px 26px rgba(0,0,0,.14);
+}
+.cab{text-align:center;padding-bottom:16px;border-bottom:2px solid var(--tinta)}
+.cab h1{margin:0 0 6px;font-size:23px;letter-spacing:1.5px;font-weight:800}
+.cab p{margin:2px 0;font-size:13px;color:var(--suave)}
+.marca{
+  margin:14px 0 0;padding:8px;border:2px dashed var(--aviso);border-radius:8px;
+  color:var(--aviso);font-weight:700;font-size:13px;text-align:center;letter-spacing:.5px;
+}
+.meta{display:flex;justify-content:space-between;gap:10px;padding:14px 0;
+  border-bottom:1px solid var(--linea);font-size:14px;flex-wrap:wrap}
+.meta b{font-size:17px;letter-spacing:.5px}
+.lin{padding:12px 0;border-bottom:1px solid var(--linea)}
+.lin .n{font-weight:600}
+.lin .r{display:flex;justify-content:space-between;color:var(--suave);font-size:14px;margin-top:3px}
+.lin .r span:last-child{color:var(--tinta);font-weight:600}
+table.iva{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+table.iva th{text-align:right;color:var(--suave);font-weight:600;padding:4px 0}
+table.iva th:first-child{text-align:left}
+table.iva td{text-align:right;padding:4px 0}
+table.iva td:first-child{text-align:left}
+.total{display:flex;justify-content:space-between;align-items:baseline;
+  padding-top:14px;border-top:2px solid var(--tinta);font-size:27px;font-weight:800}
+.pago{display:flex;justify-content:space-between;color:var(--suave);font-size:14px;margin-top:8px}
+.pie{text-align:center;color:var(--suave);font-size:13px;margin-top:22px;line-height:1.7}
+.buscar{max-width:420px;margin:0 auto 16px;display:flex;gap:8px}
+.buscar input{flex:1;padding:13px;font:inherit;border-radius:10px;
+  border:1px solid var(--linea);background:var(--papel);color:var(--tinta)}
+.buscar button{padding:13px 18px;font:inherit;font-weight:600;border:none;border-radius:10px;
+  background:var(--acento);color:#fff;cursor:pointer}
+.msg{max-width:420px;margin:0 auto;background:var(--papel);border-radius:14px;
+  padding:30px 22px;text-align:center;color:var(--suave)}
+.msg b{display:block;color:var(--tinta);font-size:17px;margin-bottom:6px}
+</style>
+</head>
+<body>
+
+<div class="buscar" id="buscador" hidden>
+  <input id="num" type="text" placeholder="Numero de ticket, ej. A-00001" autocomplete="off">
+  <button id="ir">Ver</button>
+</div>
+
+<div id="salida" class="msg">Cargando el ticket...</div>
+
+<script>
+var API = 'https://script.google.com/macros/s/AKfycbwDv4fsrYpmwDpzOlfpj4JGcdP4zJ7TWrSr1GNNI8u0rggS9xvYfPIUHNt_m6JTvd79qQ/exec';
+
+function $(id){ return document.getElementById(id); }
+function eur(n){ n = Number(n) || 0; return n.toFixed(2).replace('.', ',') + ' €'; }
+function esc(s){
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+var jsonpN = 0;
+function api(params){
+  return new Promise(function(resolve, reject){
+    var cb = 'tkcb' + (++jsonpN) + '_' + Date.now();
+    var s = document.createElement('script');
+    var t = setTimeout(function(){ limpiar(); reject(new Error('El servidor no responde')); }, 25000);
+    function limpiar(){ clearTimeout(t); delete window[cb]; if (s.parentNode) s.parentNode.removeChild(s); }
+    window[cb] = function(data){
+      limpiar();
+      if (data && data.ok === false) reject(new Error(data.error || 'Error en el servidor'));
+      else resolve(data);
+    };
+    var q = Object.keys(params).map(function(k){
+      return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+    });
+    q.push('callback=' + cb);
+    s.src = API + '?' + q.join('&');
+    s.onerror = function(){ limpiar(); reject(new Error('No se ha podido conectar')); };
+    document.head.appendChild(s);
+  });
+}
+
+function pintar(t, e){
+  var h = '<div class="papel">';
+
+  h += '<div class="cab"><h1>' + esc(e.cabecera) + '</h1>';
+  if (e.nombreFiscal && e.nombreFiscal !== e.cabecera) h += '<p>' + esc(e.nombreFiscal) + '</p>';
+  if (e.direccion) h += '<p>' + esc(e.direccion) + '</p>';
+  if (e.nif) h += '<p>NIF: ' + esc(e.nif) + '</p>';
+  h += '</div>';
+
+  if (e.pruebas && e.avisoPruebas) h += '<div class="marca">' + esc(e.avisoPruebas) + '</div>';
+
+  h += '<div class="meta"><b>' + esc(t.numeroCompleto) + '</b><span>' + esc(t.fecha) + '</span></div>';
+
+  (t.lineas || []).forEach(function(l){
+    h += '<div class="lin"><div class="n">' + esc(l.concepto) + '</div>' +
+         '<div class="r"><span>' + esc(l.cantidad) + ' x ' + eur(l.precio) +
+         '  ·  IVA ' + esc(l.iva) + '%</span><span>' + eur(l.importe) + '</span></div></div>';
+  });
+
+  if ((t.desglose || []).length){
+    h += '<table class="iva"><tr><th>Tipo</th><th>Base</th><th>Cuota</th><th>Total</th></tr>';
+    t.desglose.forEach(function(d){
+      h += '<tr><td>IVA ' + esc(d.tipo) + '%</td><td>' + eur(d.base) + '</td><td>' +
+           eur(d.cuota) + '</td><td>' + eur(Number(d.base) + Number(d.cuota)) + '</td></tr>';
+    });
+    h += '<tr><td><b>Suma</b></td><td><b>' + eur(t.base) + '</b></td><td><b>' +
+         eur(t.cuota) + '</b></td><td><b>' + eur(t.total) + '</b></td></tr></table>';
+  }
+
+  h += '<div class="total"><span>TOTAL</span><span>' + eur(t.total) + '</span></div>';
+  if (t.pago) h += '<div class="pago"><span>Forma de pago</span><span>' + esc(t.pago) + '</span></div>';
+
+  h += '<div class="pie">Copia digital de tu ticket.<br>Conservala si necesitas cambio o garantia.</div>';
+  h += '</div>';
+
+  $('salida').className = '';
+  $('salida').innerHTML = h;
+  document.title = t.numeroCompleto + ' · ' + esc(e.cabecera);
+}
+
+function error(txt, numero){
+  $('salida').className = 'msg';
+  $('salida').innerHTML = '<b>No hemos encontrado ese ticket</b>' +
+    (numero ? 'Numero buscado: ' + esc(numero) + '<br>' : '') + esc(txt);
+  $('buscador').hidden = false;
+}
+
+function param(n){
+  var m = new RegExp('[?&]' + n + '=([^&]*)').exec(location.search);
+  return m ? decodeURIComponent(m[1].replace(/\+/g, ' ')) : '';
+}
+
+function cargar(numero){
+  numero = String(numero || '').trim();
+  if (!numero){
+    $('salida').className = 'msg';
+    $('salida').innerHTML = '<b>Escribe el numero de tu ticket</b>Lo tienes impreso arriba del todo, con el formato A-00001.';
+    $('buscador').hidden = false;
+    return;
+  }
+  $('salida').className = 'msg';
+  $('salida').textContent = 'Buscando el ticket ' + numero + '...';
+  api({ accion: 'ticket', numero: numero })
+    .then(function(r){ pintar(r.ticket, r.emisor); })
+    .catch(function(e){ error(e.message, numero); });
+}
+
+$('ir').onclick = function(){
+  var n = $('num').value.trim();
+  if (n) { history.replaceState(null, '', '?t=' + encodeURIComponent(n)); cargar(n); }
+};
+$('num').addEventListener('keydown', function(e){ if (e.key === 'Enter') $('ir').click(); });
+
+cargar(param('t') || param('numero'));
+</script>
+</body>
+</html>
