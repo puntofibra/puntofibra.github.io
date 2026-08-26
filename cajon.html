@@ -1,128 +1,119 @@
 <!DOCTYPE html>
 <html lang="es">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Abrir cajon</title>
-  <style>
-      :root{
-            --bg:#0d0f14; --surface:#151821; --surface2:#1c2030; --border:#252b3b;
-            --text:#d7dbe8; --muted:#6b7490; --green:#00ee76; --red:#ff5252; --gold:#ffd740;
-            --mono:'JetBrains Mono',monospace;
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Abrir cajon</title>
+<style>
+  :root{
+    --bg:#0d0f14; --surface:#151821; --surface2:#1c2030; --border:#252b3b;
+    --text:#d7dbe8; --muted:#6b7490; --green:#00ee76; --red:#ff5252; --gold:#ffd740;
+    --mono:'JetBrains Mono',monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font-family:var(--mono);height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .caja{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px 24px;text-align:center;width:100%;max-width:340px}
+  .ico{font-size:40px;margin-bottom:12px}
+  .msg{font-size:14px;line-height:1.5;min-height:42px;display:flex;align-items:center;justify-content:center}
+  .ok{color:var(--green)} .err{color:var(--red)}
+  .btn{margin-top:16px;width:100%;background:var(--surface2);color:var(--gold);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:var(--mono);font-size:13px;font-weight:700;cursor:pointer;transition:all .2s}
+  .btn:hover{background:rgba(255,215,64,.15);border-color:var(--gold)}
+  .btn[hidden]{display:none}
+</style>
+</head>
+<body>
+  <div class="caja">
+    <div class="ico">&#128181;</div>
+    <div id="msg" class="msg">Abriendo cajon&hellip;</div>
+    <button id="btn" class="btn" hidden>Elegir impresora y abrir</button>
+  </div>
+
+<script>
+/* ============================================================
+   ABRIR CAJON PORTAMONEDAS  -  WebUSB + ESC/POS
+   Mismo camino que el TPV: WebUSB -> ESC p m t1 t2
+   Parametros opcionales por URL:
+     ?pin=0    -> pin 2 del RJ11 (por defecto).   ?pin=1 -> pin 5
+     ?cerrar=0 -> no cerrar la ventana automaticamente
+   ============================================================ */
+var Q      = new URLSearchParams(location.search);
+var PIN    = Q.get('pin') === '1' ? 1 : 0;
+var CERRAR = Q.get('cerrar') !== '0';
+
+var USB = { dispositivo: null, salida: null };
+var $msg = document.getElementById('msg');
+var $btn = document.getElementById('btn');
+
+function avisar(texto, clase){
+  $msg.textContent = texto;
+  $msg.className = 'msg' + (clase ? ' ' + clase : '');
+}
+
+async function prepararDispositivo(d){
+  if (!d.opened) await d.open();
+  if (d.configuration === null) await d.selectConfiguration(1);
+
+  var iNum = null, ep = null;
+  for (const cfg of d.configurations){
+    for (const itf of cfg.interfaces){
+      for (const alt of itf.alternates){
+        const salida = alt.endpoints.find(e => e.direction === 'out' && e.type === 'bulk');
+        if (salida && iNum === null){ iNum = itf.interfaceNumber; ep = salida.endpointNumber; }
       }
-      *{margin:0;padding:0;box-sizing:border-box}
-      body{background:var(--bg);color:var(--text);font-family:var(--mono);
-                  height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-      .caja{background:var(--surface);border:1px solid var(--border);border-radius:12px;
-                    padding:28px 24px;text-align:center;width:100%;max-width:340px}
-      .ico{font-size:40px;margin-bottom:12px}
-      .msg{font-size:14px;line-height:1.5;min-height:42px;display:flex;align-items:center;justify-content:center}
-      .ok{color:var(--green)} .err{color:var(--red)}
-      .btn{margin-top:16px;width:100%;background:var(--surface2);color:var(--gold);
-                  border:1px solid var(--border);border-radius:8px;padding:12px;font-family:var(--mono);
-                  font-size:13px;font-weight:700;cursor:pointer;transition:all .2s}
-      .btn:hover{background:rgba(255,215,64,.15);border-color:var(--gold)}
-      .btn[hidden]{display:none}
-    </style>
-  </head>
-  <body>
-      <div class="caja">
-            <div class="ico">&#128181;</div>div>
-            <div id="msg" class="msg">Abriendo cajon&hellip;</div>div>
-            <button id="btn" class="btn" hidden>Elegir impresora y abrir</button>button>
-      </div>div>
+    }
+  }
+  if (iNum === null) throw new Error('No encuentro el endpoint de salida de la impresora.');
 
-    <script>
-      /* ============================================================
-         ABRIR CAJON PORTAMONEDAS  -  WebUSB + ESC/POS
-            Mismo camino que el TPV: WebUSB -> ESC p m t1 t2
-               Parametros opcionales por URL:
-                    ?pin=0    -> pin 2 del RJ11 (por defecto).   ?pin=1 -> pin 5
-                         ?cerrar=0 -> no cerrar la ventana automaticamente
-                            ============================================================ */
-      var Q      = new URLSearchParams(location.search);
-      var PIN    = Q.get('pin') === '1' ? 1 : 0;
-      var CERRAR = Q.get('cerrar') !== '0';
+  try { await d.claimInterface(iNum); }
+  catch (e){
+    throw new Error('Windows no suelta la impresora. Cierra el TPV si lo tienes abierto y repasa Zadig (WinUSB). Detalle: ' + e.message);
+  }
+  USB.dispositivo = d;
+  USB.salida = ep;
+}
 
-      var USB = { dispositivo: null, salida: null };
-      var $msg = document.getElementById('msg');
-      var $btn = document.getElementById('btn');
+async function pulsoCajon(){
+  /* ESC p m t1 t2  ->  27 112 pin 25 250 */
+  await USB.dispositivo.transferOut(USB.salida, new Uint8Array([27, 112, PIN, 25, 250]));
+}
 
-      function avisar(texto, clase){
-          $msg.textContent = texto;
-          $msg.className = 'msg' + (clase ? ' ' + clase : '');
-      }
+async function abrir(pedir){
+  if (!navigator.usb) throw new Error('Este navegador no soporta WebUSB. Usa Chrome o Edge.');
 
-      async function prepararDispositivo(d){
-          if (!d.opened) await d.open();
-          if (d.configuration === null) await d.selectConfiguration(1);
+  var d = null;
+  var ya = await navigator.usb.getDevices();
+  if (ya.length) d = ya[0];
 
-          var iNum = null, ep = null;
-          for (const cfg of d.configurations){
-                for (const itf of cfg.interfaces){
-                        for (const alt of itf.alternates){
-                                  const salida = alt.endpoints.find(e => e.direction === 'out' && e.type === 'bulk');
-                                  if (salida && iNum === null){ iNum = itf.interfaceNumber; ep = salida.endpointNumber; }
-                        }
-                }
-          }
-          if (iNum === null) throw new Error('No encuentro el endpoint de salida de la impresora.');
+  if (!d){
+    if (!pedir) return false;
+    d = await navigator.usb.requestDevice({ filters: [] });
+  }
 
-          try { await d.claimInterface(iNum); }
-          catch (e){
-                throw new Error('Windows no suelta la impresora. Cierra el TPV si lo tienes abierto y repasa Zadig (WinUSB). Detalle: ' + e.message);
-          }
-          USB.dispositivo = d;
-          USB.salida = ep;
-      }
+  await prepararDispositivo(d);
+  await pulsoCajon();
+  return true;
+}
 
-      async function pulsoCajon(){
-          /* ESC p m t1 t2  ->  27 112 pin 25 250 */
-          await USB.dispositivo.transferOut(USB.salida, new Uint8Array([27, 112, PIN, 25, 250]));
-      }
+async function intentar(pedir){
+  try {
+    var hecho = await abrir(pedir);
+    if (!hecho){
+      avisar('Elige la impresora una sola vez. Despues ya se abrira solo.');
+      $btn.hidden = false;
+      return;
+    }
+    avisar('Cajon abierto', 'ok');
+    $btn.hidden = true;
+    if (CERRAR) setTimeout(function(){ window.close(); }, 900);
+  } catch (e){
+    avisar(e.message, 'err');
+    $btn.hidden = false;
+    $btn.textContent = 'Reintentar';
+  }
+}
 
-      async function abrir(pedir){
-          if (!navigator.usb) throw new Error('Este navegador no soporta WebUSB. Usa Chrome o Edge.');
-
-          var d = null;
-          var ya = await navigator.usb.getDevices();
-          if (ya.length) d = ya[0];
-
-          if (!d){
-                if (!pedir) return false;
-                d = await navigator.usb.requestDevice({ filters: [] });
-          }
-
-          await prepararDispositivo(d);
-          await pulsoCajon();
-          return true;
-      }
-
-      async function intentar(pedir){
-          try {
-                var hecho = await abrir(pedir);
-                if (!hecho){
-                        avisar('Elige la impresora una sola vez. Despues ya se abrira solo.');
-                        $btn.hidden = false;
-                        return;
-                }
-                avisar('Cajon abierto', 'ok');
-                $btn.hidden = true;
-                if (CERRAR) setTimeout(function(){ window.close(); }, 900);
-          } catch (e){
-                avisar(e.message, 'err');
-                $btn.hidden = false;
-                $btn.textContent = 'Reintentar';
-          }
-      }
-
-      $btn.addEventListener('click', function(){ intentar(true); });
-      window.addEventListener('load', function(){ intentar(false); });
-    </script>
-  </body>
-</html>html>
-
-    </script>
-  </body>
-  </style></title>
-  </head>
+$btn.addEventListener('click', function(){ intentar(true); });
+window.addEventListener('load', function(){ intentar(false); });
+</script>
+</body>
+</html>
