@@ -24,7 +24,7 @@
 <body>
   <div class="caja">
     <div class="ico">&#128181;</div>
-    <div id="msg" class="msg">Abriendo cajon&hellip;</div>
+    <div id="msg" class="msg">Un momento&hellip;</div>
     <button id="btn" class="btn" hidden>Elegir impresora y abrir</button>
   </div>
 
@@ -35,18 +35,32 @@
    Parametros opcionales por URL:
      ?pin=0    -> pin 2 del RJ11 (por defecto).   ?pin=1 -> pin 5
      ?cerrar=0 -> no cerrar la ventana automaticamente
+     ?solo=1   -> solo emparejar la impresora, sin abrir el cajon
    ============================================================ */
 var Q      = new URLSearchParams(location.search);
 var PIN    = Q.get('pin') === '1' ? 1 : 0;
 var CERRAR = Q.get('cerrar') !== '0';
+var SOLO   = Q.get('solo') === '1';   // solo emparejar, sin pulso al cajon
 
-var USB = { dispositivo: null, salida: null };
+var USB = { dispositivo: null, interfaz: null, salida: null };
 var $msg = document.getElementById('msg');
 var $btn = document.getElementById('btn');
 
 function avisar(texto, clase){
   $msg.textContent = texto;
   $msg.className = 'msg' + (clase ? ' ' + clase : '');
+}
+
+/* De todos los aparatos USB autorizados para esta web, quedarse solo con uno
+   que sepa recibir datos (endpoint bulk OUT). Asi no se cuela una webcam u
+   otro trasto que el navegador tenga tambien autorizado. */
+function tieneSalida(d){
+  return d.configurations.some(c => c.interfaces.some(i => i.alternates.some(
+    a => a.endpoints.some(e => e.direction === 'out' && e.type === 'bulk'))));
+}
+function elegirImpresora(lista){
+  return lista.find(d => d.vendorId === 0x1fc9 && tieneSalida(d)) ||
+         lista.find(tieneSalida) || null;
 }
 
 async function prepararDispositivo(d){
@@ -64,11 +78,16 @@ async function prepararDispositivo(d){
   }
   if (iNum === null) throw new Error('No encuentro el endpoint de salida de la impresora.');
 
-  try { await d.claimInterface(iNum); }
-  catch (e){
-    throw new Error('Windows no suelta la impresora. Cierra el TPV si lo tienes abierto y repasa Zadig (WinUSB). Detalle: ' + e.message);
+  var cogida = false;
+  for (var intento = 0; intento < 4 && !cogida; intento++){
+    try { await d.claimInterface(iNum); cogida = true; }
+    catch (e){
+      if (intento === 3) throw new Error('La impresora esta ocupada por otra ventana (cierra la pestana del TPV) o le falta el driver WinUSB de Zadig. Detalle: ' + e.message);
+      await new Promise(function(r){ setTimeout(r, 400); });
+    }
   }
   USB.dispositivo = d;
+  USB.interfaz = iNum;
   USB.salida = ep;
 }
 
@@ -77,20 +96,29 @@ async function pulsoCajon(){
   await USB.dispositivo.transferOut(USB.salida, new Uint8Array([27, 112, PIN, 25, 250]));
 }
 
+/* Soltar la impresora al acabar, para que el TPV o la caja puedan usarla. */
+async function soltar(){
+  var d = USB.dispositivo, i = USB.interfaz;
+  USB = { dispositivo: null, interfaz: null, salida: null };
+  if (!d) return;
+  try { if (i !== null && i !== undefined) await d.releaseInterface(i); } catch (e){}
+  try { await d.close(); } catch (e){}
+}
+
 async function abrir(pedir){
   if (!navigator.usb) throw new Error('Este navegador no soporta WebUSB. Usa Chrome o Edge.');
 
-  var d = null;
-  var ya = await navigator.usb.getDevices();
-  if (ya.length) d = ya[0];
+  var d = elegirImpresora(await navigator.usb.getDevices());
 
   if (!d){
     if (!pedir) return false;
-    d = await navigator.usb.requestDevice({ filters: [] });
+    try { d = await navigator.usb.requestDevice({ filters: [{ vendorId: 0x1fc9 }] }); }
+    catch (e){ d = await navigator.usb.requestDevice({ filters: [] }); }
   }
 
   await prepararDispositivo(d);
-  await pulsoCajon();
+  try { if (!SOLO) await pulsoCajon(); }
+  finally { await soltar(); }
   return true;
 }
 
@@ -98,11 +126,11 @@ async function intentar(pedir){
   try {
     var hecho = await abrir(pedir);
     if (!hecho){
-      avisar('Elige la impresora una sola vez. Despues ya se abrira solo.');
+      avisar('Elige la impresora una sola vez. Despues ya se hara solo.');
       $btn.hidden = false;
       return;
     }
-    avisar('Cajon abierto', 'ok');
+    avisar(SOLO ? 'Impresora lista' : 'Cajon abierto', 'ok');
     $btn.hidden = true;
     if (CERRAR) setTimeout(function(){ window.close(); }, 900);
   } catch (e){
@@ -113,7 +141,12 @@ async function intentar(pedir){
 }
 
 $btn.addEventListener('click', function(){ intentar(true); });
-window.addEventListener('load', function(){ intentar(false); });
+window.addEventListener('load', function(){
+  document.title = SOLO ? 'Conectar impresora' : 'Abrir cajon';
+  avisar(SOLO ? 'Conectando con la impresora\u2026' : 'Abriendo cajon\u2026');
+  if (SOLO) $btn.textContent = 'Elegir impresora';
+  intentar(false);
+});
 </script>
 </body>
 </html>

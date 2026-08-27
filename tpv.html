@@ -411,6 +411,18 @@ function estadoImpresora(txt, clase) {
   c.className = 'chip' + (clase ? ' ' + clase : '');
 }
 
+/* De todos los aparatos USB autorizados para esta web, quedarse solo con uno
+   que sepa recibir datos (endpoint bulk OUT). Asi no se cuela una webcam u
+   otro trasto que el navegador tenga tambien autorizado. */
+function tieneSalida(d) {
+  return d.configurations.some(c => c.interfaces.some(i => i.alternates.some(
+    a => a.endpoints.some(e => e.direction === 'out' && e.type === 'bulk'))));
+}
+function elegirImpresora(lista) {
+  return lista.find(d => d.vendorId === 0x1fc9 && tieneSalida(d)) ||
+         lista.find(tieneSalida) || null;
+}
+
 async function prepararDispositivo(d) {
   if (!d.opened) await d.open();
   if (d.configuration === null) await d.selectConfiguration(1);
@@ -426,8 +438,14 @@ async function prepararDispositivo(d) {
   }
   if (iNum === null) throw new Error('La impresora no expone ninguna salida de datos');
 
-  try { await d.claimInterface(iNum); }
-  catch (e) { throw new Error('Windows no suelta la impresora. Repasa el paso de Zadig (WinUSB). Detalle: ' + e.message); }
+  let cogida = false;
+  for (let intento = 0; intento < 4 && !cogida; intento++) {
+    try { await d.claimInterface(iNum); cogida = true; }
+    catch (e) {
+      if (intento === 3) throw new Error('La impresora esta ocupada por otra ventana (cierra la otra pestana) o le falta el driver WinUSB de Zadig. Detalle: ' + e.message);
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
 
   USB = { dispositivo: d, interfaz: iNum, salida: ep };
   estadoImpresora('Impresora lista', 'on');
@@ -440,9 +458,7 @@ async function conectar(pedir) {
   }
   if (USB.dispositivo && USB.dispositivo.opened) return USB.dispositivo;
 
-  let d = null;
-  const ya = await navigator.usb.getDevices();
-  if (ya.length) d = ya[0];
+  let d = elegirImpresora(await navigator.usb.getDevices());
   if (!d) {
     if (!pedir) throw new Error('Impresora sin conectar. Pulsa "Conectar impresora".');
     try { d = await navigator.usb.requestDevice({ filters: FILTROS_USB }); }
@@ -452,11 +468,26 @@ async function conectar(pedir) {
   return d;
 }
 
+/* Soltar la impresora en cuanto se acaba el trabajo, para que la otra ventana
+   (la caja, o cajon.html) pueda cogerla. Windows solo deja una a la vez. */
+async function soltar() {
+  const d = USB.dispositivo, i = USB.interfaz;
+  USB = { dispositivo: null, interfaz: null, salida: null };
+  if (!d) return;
+  try { if (i !== null && i !== undefined) await d.releaseInterface(i); } catch (e) {}
+  try { await d.close(); } catch (e) {}
+  estadoImpresora('Impresora lista', 'on');
+}
+
 async function enviar(bytes) {
   await conectar(false);
-  const trozo = 4096;
-  for (let i = 0; i < bytes.length; i += trozo) {
-    await USB.dispositivo.transferOut(USB.salida, bytes.slice(i, i + trozo));
+  try {
+    const trozo = 4096;
+    for (let i = 0; i < bytes.length; i += trozo) {
+      await USB.dispositivo.transferOut(USB.salida, bytes.slice(i, i + trozo));
+    }
+  } finally {
+    await soltar();
   }
 }
 
@@ -651,7 +682,8 @@ document.addEventListener('keydown', e => {
 
 if ('usb' in navigator) {
   navigator.usb.getDevices().then(ds => {
-    if (ds.length) prepararDispositivo(ds[0]).catch(() => estadoImpresora('Impresora sin conectar'));
+    if (elegirImpresora(ds)) estadoImpresora('Impresora lista', 'on');
+    else estadoImpresora('Impresora sin conectar');
   });
 } else {
   estadoImpresora('Sin WebUSB: usa Chrome o Edge', 'off');
