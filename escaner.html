@@ -113,6 +113,8 @@ if ('serviceWorker' in navigator) {
 <div class="lote">
   <label for="nombreLote">Lote</label>
   <input id="nombreLote" maxlength="40" placeholder="Pedido del martes">
+  <label for="nombreOperador" style="margin-top:14px">Operador</label>
+  <input id="nombreOperador" maxlength="40" placeholder="Movistar">
 </div>
 
 <p class="aviso" id="aviso"></p>
@@ -141,10 +143,11 @@ if (!dev) {
 }
 
 function nuevoLote() {
-  return { nombre: '', creado: Date.now(), items: [] };
+  return { nombre: '', operador: '', creado: Date.now(), items: [] };
 }
 function guardarLocal() {
   lote.nombre = $('nombreLote').value.trim();
+  lote.operador = $('nombreOperador').value.trim();
   localStorage.setItem('sim_lote', JSON.stringify(lote));
 }
 
@@ -350,7 +353,8 @@ async function subir() {
         lote: lote.nombre || 'sin lote',
         dev: dev,
         lista: trozo.map(function (it) { return it.iccid; }).join(','),
-        control: trozo.map(function (it) { return it.control ? '1' : '0'; }).join(',')
+        control: trozo.map(function (it) { return it.control ? '1' : '0'; }).join(','),
+          op: lote.operador || ''
       });
       if (r && r.ok) {
         r.res.forEach(function (x) {
@@ -406,9 +410,11 @@ $('nuevo').onclick = function () {
   if (pend && !confirm('Quedan ' + pend + ' sin subir. ¿Empezar un lote nuevo igualmente?')) return;
   lote = nuevoLote();
   $('nombreLote').value = '';
+  $('nombreOperador').value = '';
   guardarLocal(); pintar(); decir('', true);
 };
 $('nombreLote').oninput = guardarLocal;
+$('nombreOperador').oninput = guardarLocal;
 
 window.addEventListener('online', subir);
 document.addEventListener('visibilitychange', function () {
@@ -416,6 +422,7 @@ document.addEventListener('visibilitychange', function () {
 });
 
 $('nombreLote').value = lote.nombre || '';
+$('nombreOperador').value = lote.operador || '';
 pintar();
 </script>
 </body>
