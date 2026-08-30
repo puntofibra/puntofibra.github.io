@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Entrar</title>
+<style>
+  :root{
+    --ink:#0b1a20; --panel:#102a33; --rule:#1e434f;
+    --pale:#cfe4e6; --dim:#7fa3ab; --amber:#ffb340; --mint:#5fd9b4; --red:#e8705e;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%;background:var(--ink);color:var(--pale);
+    font-family:'IBM Plex Sans',system-ui,sans-serif;-webkit-text-size-adjust:100%}
+  body{padding:28px 22px 40px;max-width:460px;margin:0 auto}
+
+  h1{font-size:23px;font-weight:600;margin:0 0 6px;letter-spacing:-.01em}
+  .sub{color:var(--dim);font-size:15px;line-height:1.55;margin:0 0 28px}
+
+  label{display:block;font-size:14px;color:var(--dim);margin-bottom:8px}
+  input{
+    width:100%;font:500 19px/1.2 inherit;color:var(--pale);background:var(--panel);
+    border:1px solid var(--rule);border-radius:4px;padding:14px;margin-bottom:20px;
+  }
+  input:focus{outline:none;border-color:var(--amber)}
+  input.cod{font-family:ui-monospace,monospace;letter-spacing:.28em;text-transform:uppercase;color:var(--amber)}
+
+  button{
+    width:100%;font:600 17px/1 inherit;color:var(--ink);background:var(--mint);
+    border:none;border-radius:4px;padding:17px;cursor:pointer;
+  }
+  button.ghost{background:transparent;color:var(--dim);border:1px solid var(--rule);
+    font-weight:500;font-size:15px;padding:14px;margin-top:12px}
+  button:disabled{opacity:.45}
+
+  .oreja{text-align:center;padding:34px 0 6px}
+  .aro{
+    width:104px;height:104px;margin:0 auto 24px;border-radius:50%;
+    border:2px solid var(--rule);position:relative;
+  }
+  .aro::after{
+    content:'';position:absolute;inset:-2px;border-radius:50%;
+    border:2px solid var(--amber);border-right-color:transparent;border-bottom-color:transparent;
+    animation:gira 1.9s linear infinite;
+  }
+  @keyframes gira{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){.aro::after{animation:none}}
+  .oreja p{color:var(--dim);font-size:15px;line-height:1.6;margin:0}
+
+  .dentro{text-align:center;padding:30px 0}
+  .tick{font-size:52px;color:var(--mint);line-height:1;margin-bottom:18px}
+  .dentro h2{font-size:26px;margin:0 0 8px;font-weight:600}
+  .dentro p{color:var(--dim);font-size:15px;margin:0}
+  .dentro .sala{font-family:ui-monospace,monospace;color:var(--amber);letter-spacing:.2em}
+
+  .aviso{color:var(--red);font-size:14px;line-height:1.55;margin:14px 0 0;min-height:20px}
+  .paso{display:none}
+  .paso.ver{display:block}
+</style>
+</head>
+<body>
+
+<div class="paso ver" id="p1">
+  <h1>Entrar en la sala</h1>
+  <p class="sub">Pon tu nombre y acerca el móvil a la tele. No hay que apuntar a ningún código.</p>
+  <label for="nombre">Tu nombre</label>
+  <input id="nombre" maxlength="16" autocomplete="nickname" placeholder="Manu">
+  <button id="ir">Escuchar la tele</button>
+  <button class="ghost" id="verManual">Escribir el código a mano</button>
+  <p class="aviso" id="aviso1"></p>
+</div>
+
+<div class="paso" id="pManual">
+  <h1>Código de la sala</h1>
+  <p class="sub">Los seis caracteres que salen en la pantalla grande.</p>
+  <input id="codman" class="cod" maxlength="6" inputmode="text" autocomplete="off" spellcheck="false">
+  <button id="irManual">Entrar</button>
+  <button class="ghost" id="volver">Probar con el sonido</button>
+  <p class="aviso" id="aviso2"></p>
+</div>
+
+<div class="paso" id="p2">
+  <div class="oreja">
+    <div class="aro"></div>
+    <p>Escuchando la tele. Sube un poco el volumen si tarda.</p>
+  </div>
+  <button class="ghost" id="cancelar">Dejarlo</button>
+</div>
+
+<div class="paso" id="p3">
+  <div class="dentro">
+    <div class="tick">&check;</div>
+    <h2 id="quien"></h2>
+    <p>Estás dentro de la sala <span class="sala" id="sala"></span></p>
+  </div>
+  <button class="ghost" id="salir">Salir de la sala</button>
+</div>
+
+<script>
+/* ================= AJUSTA ESTO ================= */
+const EXEC = 'https://script.google.com/macros/s/AKfycbzS5RPK6mZjZDeINZeL6wXkZm3jv_PmkkMhDUYxeuRTap2KxjUzY3tdHNuI2H0iacUklQ/exec';
+/* =============================================== */
+
+/* protocolo, banda media 17,0–18,5 kHz */
+const PRE = 16800, F0 = 17000, DF = 100, NT = 16;
+const HEX = '0123456789ABCDEF';
+
+const $ = function(id){ return document.getElementById(id); };
+const ver = function(id){
+  ['p1','pManual','p2','p3'].forEach(function(p){ $(p).classList.toggle('ver', p === id); });
+};
+
+/* identidad del aparato, para que recargar no te eche */
+let dev = localStorage.getItem('sonar_dev');
+if (!dev){
+  dev = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now())
+        .replace(/[^a-z0-9]/gi, '');
+  localStorage.setItem('sonar_dev', dev);
+}
+
+/* ---------- JSONP contra Apps Script ---------- */
+function llamar(params){
+  return new Promise(function(res, rej){
+    const cb = 'cb' + Math.random().toString(36).slice(2);
+    const s = document.createElement('script');
+    const limpia = function(){ delete window[cb]; s.remove(); };
+    const reloj = setTimeout(function(){ limpia(); rej(new Error('sin_respuesta')); }, 15000);
+    window[cb] = function(d){ clearTimeout(reloj); limpia(); res(d); };
+    s.onerror = function(){ clearTimeout(reloj); limpia(); rej(new Error('sin_red')); };
+    params.callback = cb;
+    s.src = EXEC + '?' + Object.keys(params).map(function(k){
+      return k + '=' + encodeURIComponent(params[k]);
+    }).join('&');
+    document.body.appendChild(s);
+  });
+}
+
+const ERRORES = {
+  sala_no_existe: 'Esa sala no existe o ya ha caducado.',
+  sala_cerrada:   'La sala está cerrada. Que la abran en la tele.',
+  sala_llena:     'La sala está completa.',
+  ocupado:        'Todos a la vez, no. Prueba otra vez.'
+};
+
+/* ---------- oído ---------- */
+let rxCtx, analyser, datos, stream, escuchando = false;
+let ultimo = null, racha = 0, buf = null, bufAt = 0;
+
+async function escuchar(){
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({ audio:{
+      echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:1
+    }});
+  } catch(err){
+    $('aviso1').textContent = 'No hay permiso de micrófono. Dáselo al navegador o entra con el código a mano.';
+    ver('p1');
+    return;
+  }
+  rxCtx = new (window.AudioContext || window.webkitAudioContext)();
+  await rxCtx.resume();
+  analyser = rxCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0;
+  rxCtx.createMediaStreamSource(stream).connect(analyser);
+  datos = new Float32Array(analyser.frequencyBinCount);
+  escuchando = true;
+  ultimo = null; racha = 0; buf = null;
+  vuelta();
+}
+
+function parar(){
+  escuchando = false;
+  if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
+  if (rxCtx) rxCtx.close();
+}
+
+const tono = function(i){ return F0 + i*DF; };
+function db(f){
+  const b = Math.round(f / (rxCtx.sampleRate / analyser.fftSize));
+  return Math.max(datos[b-1] || -140, datos[b] || -140, datos[b+1] || -140);
+}
+function mediana(a){ const s = a.slice().sort(function(x,y){ return x-y; }); return s[s.length >> 1]; }
+
+function vuelta(){
+  if (!escuchando) return;
+  analyser.getFloatFrequencyData(datos);
+
+  const objetivos = [PRE];
+  for (let i = 0; i < NT; i++) objetivos.push(tono(i));
+  const niveles = objetivos.map(db);
+  const suelo = mediana(niveles);
+  let alto = 0;
+  for (let i = 1; i < niveles.length; i++) if (niveles[i] > niveles[alto]) alto = i;
+
+  const sim = (niveles[alto] - suelo > 10) ? alto - 1 : null;
+
+  if (sim === ultimo){ racha++; }
+  else {
+    if (ultimo !== null && racha >= 2) meter(ultimo);
+    ultimo = sim; racha = 1;
+  }
+  if (buf && performance.now() - bufAt > 4000) buf = null;
+  requestAnimationFrame(vuelta);
+}
+
+function meter(s){
+  if (s === -1){ buf = []; bufAt = performance.now(); return; }
+  if (!buf) return;
+  buf.push(s); bufAt = performance.now();
+  if (buf.length === 7){
+    const datosNib = buf.slice(0,6);
+    const suma = datosNib.reduce(function(a,b){ return a+b; }, 0) & 15;
+    if (suma === buf[6]){
+      const code = datosNib.map(function(n){ return HEX[n]; }).join('');
+      parar();
+      canjear(code);
+    }
+    buf = null;
+  }
+}
+
+/* ---------- canje del vale ---------- */
+async function canjear(code){
+  const nombre = $('nombre').value.trim();
+  try{
+    const r = await llamar({ fn:'unir', code:code, nombre:nombre, dev:dev });
+    if (r && r.ok){
+      localStorage.setItem('sonar_vale', r.vale);
+      dentro(r.nombre, r.sala);
+    } else {
+      const msg = (r && ERRORES[r.error]) || 'No se ha podido entrar.';
+      $('aviso1').textContent = msg;
+      $('aviso2').textContent = msg;
+      ver('p1');
+    }
+  } catch(err){
+    $('aviso1').textContent = 'Sin conexión con el servidor.';
+    ver('p1');
+  }
+}
+
+function dentro(nombre, sala){
+  $('quien').textContent = nombre;
+  $('sala').textContent = sala;
+  ver('p3');
+}
+
+/* ---------- botones ---------- */
+$('ir').onclick = function(){
+  $('aviso1').textContent = '';
+  ver('p2');
+  escuchar();
+};
+$('cancelar').onclick = function(){ parar(); ver('p1'); };
+$('verManual').onclick = function(){ $('aviso2').textContent = ''; ver('pManual'); };
+$('volver').onclick = function(){ ver('p1'); };
+$('irManual').onclick = function(){
+  const c = $('codman').value.toUpperCase().replace(/[^0-9A-F]/g, '');
+  if (c.length !== 6){ $('aviso2').textContent = 'Son seis caracteres, del 0 al 9 y de la A a la F.'; return; }
+  $('aviso2').textContent = '';
+  canjear(c);
+};
+$('salir').onclick = async function(){
+  const vale = localStorage.getItem('sonar_vale');
+  localStorage.removeItem('sonar_vale');
+  ver('p1');
+  if (vale) { try { await llamar({ fn:'salir', vale:vale }); } catch(e){} }
+};
+
+/* si ya tenía vale, entra solo */
+(async function(){
+  const vale = localStorage.getItem('sonar_vale');
+  if (!vale) return;
+  try{
+    const r = await llamar({ fn:'comprobar', vale:vale });
+    if (r && r.ok) dentro(r.nombre, r.sala);
+    else localStorage.removeItem('sonar_vale');
+  } catch(e){}
+})();
+</script>
+</body>
+</html>
