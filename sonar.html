@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sonar · canal ultrasónico</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0b1a20;
+    --panel:#102a33;
+    --rule:#1e434f;
+    --pale:#cfe4e6;
+    --dim:#7fa3ab;
+    --amber:#ffb340;
+    --mint:#5fd9b4;
+    --red:#e8705e;
+    --sans:'IBM Plex Sans',system-ui,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--ink);color:var(--pale);font-family:var(--sans)}
+  body{padding:20px 16px 48px;max-width:760px;margin:0 auto;-webkit-text-size-adjust:100%}
+
+  header{margin-bottom:18px}
+  h1{font-size:20px;font-weight:600;margin:0 0 4px;letter-spacing:-.01em}
+  header p{margin:0;color:var(--dim);font-size:14px;line-height:1.5;max-width:60ch}
+
+  .scope{
+    position:relative;border:1px solid var(--rule);background:var(--panel);
+    border-radius:3px;overflow:hidden;margin:18px 0 8px;
+  }
+  canvas{display:block;width:100%;height:190px}
+  .scope .idle{
+    position:absolute;inset:0;display:grid;place-items:center;
+    color:var(--dim);font-size:13px;background:var(--panel);
+  }
+  .scope .idle.off{display:none}
+
+  .readout{
+    display:flex;gap:22px;flex-wrap:wrap;font-family:var(--mono);
+    font-size:13px;color:var(--dim);margin-bottom:22px;font-variant-numeric:tabular-nums;
+  }
+  .readout b{color:var(--pale);font-weight:500}
+  .readout .hot{color:var(--amber)}
+
+  section{border-top:1px solid var(--rule);padding-top:18px;margin-top:22px}
+  h2{font-size:14px;font-weight:600;margin:0 0 12px;color:var(--pale)}
+  .hint{color:var(--dim);font-size:13px;line-height:1.55;margin:0 0 14px;max-width:62ch}
+
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  button{
+    font:500 14px/1 var(--sans);color:var(--pale);background:transparent;
+    border:1px solid var(--rule);border-radius:3px;padding:10px 14px;cursor:pointer;
+  }
+  button:hover{border-color:var(--dim)}
+  button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+  button.on{background:var(--amber);border-color:var(--amber);color:#0b1a20}
+  button.go{border-color:var(--mint);color:var(--mint)}
+  button.go.on{background:var(--mint);border-color:var(--mint);color:#0b1a20}
+  button:disabled{opacity:.4;cursor:not-allowed}
+
+  input[type=text]{
+    font:500 18px/1 var(--mono);letter-spacing:.22em;color:var(--amber);
+    background:var(--panel);border:1px solid var(--rule);border-radius:3px;
+    padding:9px 12px;width:8.5em;text-transform:uppercase;
+  }
+  input[type=range]{accent-color:var(--amber);width:150px}
+  label.slider{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--dim);font-family:var(--mono)}
+
+  .code{
+    font-family:var(--mono);font-size:34px;letter-spacing:.2em;color:var(--mint);
+    padding:14px 0 6px;min-height:56px;font-variant-numeric:tabular-nums;
+  }
+  .code.miss{color:var(--red);font-size:15px;letter-spacing:0;padding-top:22px}
+  .code.wait{color:var(--dim);font-size:15px;letter-spacing:0;padding-top:22px}
+
+  .tape{
+    font-family:var(--mono);font-size:15px;color:var(--dim);background:var(--panel);
+    border:1px solid var(--rule);border-radius:3px;padding:10px 12px;
+    white-space:nowrap;overflow:hidden;direction:rtl;text-align:left;min-height:39px;
+  }
+  .tape span{color:var(--amber)}
+  .tape em{color:var(--mint);font-style:normal}
+
+  .log{font-family:var(--mono);font-size:12px;color:var(--dim);line-height:1.7;margin-top:12px}
+  .log div{border-bottom:1px solid var(--rule);padding:3px 0}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Sonar</h1>
+  <p>Banco de pruebas del canal ultrasónico. Emite desde la tele, escucha desde el móvil, y mira en el espectro hasta dónde llega tu altavoz de verdad.</p>
+</header>
+
+<div class="scope">
+  <canvas id="scope"></canvas>
+  <div class="idle" id="idle">El espectro aparece al empezar a escuchar</div>
+</div>
+<div class="readout">
+  <span>banda <b id="rBand">—</b></span>
+  <span>pico <b id="rPeak">—</b></span>
+  <span>margen <b id="rMargin" class="hot">—</b></span>
+  <span>muestreo <b id="rRate">—</b></span>
+</div>
+
+<section>
+  <h2>Emitir</h2>
+  <p class="hint">Esto va en la tele. Sube el volumen a un nivel normal de ver la tele: aunque no lo oigas, el altavoz tiene que estar trabajando.</p>
+  <div class="row">
+    <input type="text" id="code" maxlength="6" value="7F2A91" spellcheck="false">
+    <button id="dice">Otro código</button>
+    <button id="tx" class="go">Emitir</button>
+  </div>
+  <div class="row">
+    <button class="band" data-band="0">Banda alta 18,0–19,5 kHz</button>
+    <button class="band" data-band="1">Media 17,0–18,5</button>
+    <button class="band" data-band="2">Baja 15,8–17,3</button>
+  </div>
+  <div class="row">
+    <label class="slider">volumen <input type="range" id="amp" min="1" max="60" value="22"><b id="ampV">0.22</b></label>
+  </div>
+  <p class="hint">Si el móvil no capta nada en banda alta, tu tele corta los agudos. Baja de banda hasta que el margen suba. Estos cuatro tonos fijos te dicen dónde está el corte:</p>
+  <div class="row">
+    <button class="cw" data-f="15500">15,5 kHz</button>
+    <button class="cw" data-f="17000">17,0</button>
+    <button class="cw" data-f="18000">18,0</button>
+    <button class="cw" data-f="19500">19,5</button>
+  </div>
+</section>
+
+<section>
+  <h2>Escuchar</h2>
+  <p class="hint">Esto va en el móvil, con la página servida por HTTPS. Detecta la banda sola en cuanto oye una cabecera.</p>
+  <div class="row">
+    <button id="rx" class="go">Escuchar</button>
+    <label class="slider">umbral <input type="range" id="thr" min="4" max="24" value="10"><b id="thrV">10 dB</b></label>
+  </div>
+  <div class="code wait" id="out">Sin señal</div>
+  <div class="tape" id="tape"></div>
+  <div class="log" id="log"></div>
+</section>
+
+<script>
+/* ---------- protocolo ---------- */
+const BANDS = [
+  { name:'alta',  pre:17800, f0:18000 },
+  { name:'media', pre:16800, f0:17000 },
+  { name:'baja',  pre:15600, f0:15800 }
+];
+const DF = 100;          // separación entre tonos
+const NT = 16;           // 16 tonos = 1 nibble por símbolo
+const SYM = 0.080;       // duración de tono
+const GAP = 0.025;       // silencio entre tonos
+const FRAME_MS = 1500;   // repetición de la trama
+const HEX = '0123456789ABCDEF';
+
+const tone = (b,i) => BANDS[b].f0 + i*DF;
+const checksum = nib => nib.reduce((a,c)=>a+c,0) & 15;
+
+/* ---------- emisor ---------- */
+let txCtx = null, txTimer = null, cw = null, band = 0;
+const $ = id => document.getElementById(id);
+
+function ctx(){
+  if (!txCtx) txCtx = new (window.AudioContext||window.webkitAudioContext)();
+  if (txCtx.state === 'suspended') txCtx.resume();
+  return txCtx;
+}
+
+function blip(c, f, at, dur, amp){
+  const o = c.createOscillator(), g = c.createGain();
+  o.type = 'sine'; o.frequency.value = f;
+  o.connect(g); g.connect(c.destination);
+  // las rampas evitan el chasquido: un corte seco sí se oye
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(amp, at + 0.006);
+  g.gain.setValueAtTime(amp, at + dur - 0.006);
+  g.gain.linearRampToValueAtTime(0, at + dur);
+  o.start(at); o.stop(at + dur + 0.02);
+}
+
+function sendFrame(){
+  const c = ctx();
+  const raw = $('code').value.toUpperCase().replace(/[^0-9A-F]/g,'').padEnd(6,'0').slice(0,6);
+  $('code').value = raw;
+  const nib = raw.split('').map(ch => HEX.indexOf(ch));
+  const seq = [BANDS[band].pre, ...nib.map(n=>tone(band,n)), tone(band, checksum(nib))];
+  const amp = $('amp').value / 100;
+  let t = c.currentTime + 0.08;
+  for (const f of seq){ blip(c, f, t, SYM, amp); t += SYM + GAP; }
+}
+
+$('tx').onclick = e => {
+  if (txTimer){ clearInterval(txTimer); txTimer = null; e.target.classList.remove('on'); e.target.textContent = 'Emitir'; return; }
+  sendFrame();
+  txTimer = setInterval(sendFrame, FRAME_MS);
+  e.target.classList.add('on'); e.target.textContent = 'Emitiendo';
+};
+
+$('dice').onclick = () => {
+  let s = ''; for (let i=0;i<6;i++) s += HEX[Math.floor(Math.random()*16)];
+  $('code').value = s;
+};
+
+document.querySelectorAll('.band').forEach(b => {
+  b.onclick = () => {
+    band = +b.dataset.band;
+    document.querySelectorAll('.band').forEach(x => x.classList.toggle('on', x === b));
+  };
+});
+document.querySelector('.band').classList.add('on');
+
+$('amp').oninput = e => $('ampV').textContent = (e.target.value/100).toFixed(2);
+
+document.querySelectorAll('.cw').forEach(b => {
+  b.onclick = () => {
+    const c = ctx();
+    if (cw){ cw.o.stop(); cw = null; document.querySelectorAll('.cw').forEach(x=>x.classList.remove('on')); if (cw === null && b.classList.contains('was')) { b.classList.remove('was'); return; } }
+    document.querySelectorAll('.cw').forEach(x=>x.classList.remove('on','was'));
+    const o = c.createOscillator(), g = c.createGain();
+    o.type='sine'; o.frequency.value = +b.dataset.f;
+    g.gain.value = $('amp').value/100;
+    o.connect(g); g.connect(c.destination); o.start();
+    cw = { o }; b.classList.add('on','was');
+  };
+});
+
+/* ---------- receptor ---------- */
+let rxCtx, analyser, freqData, stream, running = false;
+let active = -1;      // banda bloqueada, -1 = buscando
+let last = null, run = 0, buf = null, bufAt = 0;
+let peakDb = -120, marginDb = 0, litFreq = 0;
+const tape = [];
+
+$('thr').oninput = e => $('thrV').textContent = e.target.value + ' dB';
+
+$('rx').onclick = async e => {
+  if (running){ stopRx(); e.target.classList.remove('on'); e.target.textContent = 'Escuchar'; return; }
+  try {
+    // sin esto el navegador se come los ultrasonidos: los trata como ruido
+    stream = await navigator.mediaDevices.getUserMedia({ audio:{
+      echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:1
+    }});
+  } catch (err){
+    log('Micrófono denegado o página sin HTTPS');
+    return;
+  }
+  rxCtx = new (window.AudioContext||window.webkitAudioContext)();
+  await rxCtx.resume();
+  analyser = rxCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0;
+  rxCtx.createMediaStreamSource(stream).connect(analyser);
+  freqData = new Float32Array(analyser.frequencyBinCount);
+  $('rRate').textContent = (rxCtx.sampleRate/1000).toFixed(1) + ' kHz';
+  $('idle').classList.add('off');
+  running = true; reset();
+  e.target.classList.add('on'); e.target.textContent = 'Escuchando';
+  loop();
+};
+
+function stopRx(){
+  running = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (rxCtx) rxCtx.close();
+  $('idle').classList.remove('off');
+}
+
+function reset(){ last = null; run = 0; buf = null; }
+
+function binOf(f){ return Math.round(f / (rxCtx.sampleRate / analyser.fftSize)); }
+function dbAt(f){
+  const b = binOf(f);
+  return Math.max(freqData[b-1] ?? -140, freqData[b] ?? -140, freqData[b+1] ?? -140);
+}
+const median = a => { const s=[...a].sort((x,y)=>x-y); return s[s.length>>1]; };
+
+function loop(){
+  if (!running) return;
+  analyser.getFloatFrequencyData(freqData);
+
+  // sin banda fija, se vigilan las tres cabeceras a la vez
+  if (active < 0){
+    let best = -1, bestM = 0;
+    for (let b = 0; b < 3; b++){
+      const ref = median([...Array(NT)].map((_,i)=>dbAt(tone(b,i))));
+      const m = dbAt(BANDS[b].pre) - ref;
+      if (m > bestM){ bestM = m; best = b; }
+    }
+    if (bestM > +$('thr').value){
+      active = best;
+      $('rBand').textContent = BANDS[active].name;
+      log('Banda ' + BANDS[active].name + ' detectada');
+    }
+  }
+
+  let sym = null;
+  if (active >= 0){
+    const targets = [BANDS[active].pre, ...[...Array(NT)].map((_,i)=>tone(active,i))];
+    const levels = targets.map(dbAt);
+    const floor = median(levels);
+    let hi = 0; for (let i=1;i<levels.length;i++) if (levels[i] > levels[hi]) hi = i;
+    peakDb = levels[hi]; marginDb = peakDb - floor; litFreq = targets[hi];
+    if (marginDb > +$('thr').value) sym = hi - 1;   // -1 = cabecera
+    $('rPeak').textContent = peakDb.toFixed(0) + ' dB';
+    $('rMargin').textContent = marginDb.toFixed(0) + ' dB';
+  } else {
+    litFreq = 0; marginDb = 0;
+  }
+
+  // un tono dura ~80 ms, o sea varias vueltas seguidas: se agrupan
+  if (sym === last){ run++; }
+  else {
+    if (last !== null && run >= 2) push(last);
+    last = sym; run = 1;
+  }
+
+  if (buf && performance.now() - bufAt > 4000){ buf = null; }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function push(s){
+  if (s === -1){ buf = []; bufAt = performance.now(); ink('▸'); return; }
+  ink(HEX[s]);
+  if (!buf) return;
+  buf.push(s); bufAt = performance.now();
+  if (buf.length === 7){
+    const data = buf.slice(0,6), got = buf[6];
+    if (checksum(data) === got){
+      const code = data.map(n=>HEX[n]).join('');
+      $('out').className = 'code'; $('out').textContent = code;
+      ink('✓');
+      log('Código ' + code + ' · margen ' + marginDb.toFixed(0) + ' dB');
+      onCode(code);
+    } else {
+      $('out').className = 'code miss'; $('out').textContent = 'Trama recibida con errores';
+      ink('✗');
+    }
+    buf = null;
+  }
+}
+
+function ink(ch){
+  tape.unshift(ch);
+  if (tape.length > 60) tape.pop();
+  $('tape').innerHTML = tape.map(c =>
+    c === '▸' ? '<span>▸</span>' : (c === '✓' || c === '✗') ? '<em>'+c+'</em>' : c
+  ).join(' ');
+}
+
+function log(msg){
+  const d = document.createElement('div');
+  d.textContent = new Date().toTimeString().slice(0,8) + '  ' + msg;
+  $('log').prepend(d);
+  while ($('log').children.length > 8) $('log').lastChild.remove();
+}
+
+/* aquí es donde luego enganchas la llamada JSONP a Apps Script */
+function onCode(code){ /* unirse a la sesión */ }
+
+/* ---------- espectro ---------- */
+const FMIN = 14000, FMAX = 21000, DBMIN = -110, DBMAX = -25;
+const cv = $('scope'), g2 = cv.getContext('2d');
+
+function draw(){
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== W*dpr){ cv.width = W*dpr; cv.height = H*dpr; }
+  g2.setTransform(dpr,0,0,dpr,0,0);
+  g2.clearRect(0,0,W,H);
+
+  const x = f => (f - FMIN) / (FMAX - FMIN) * W;
+  const y = d => H - (Math.min(Math.max(d,DBMIN),DBMAX) - DBMIN) / (DBMAX - DBMIN) * H;
+
+  // ranuras de tono de la banda activa
+  if (active >= 0){
+    g2.strokeStyle = '#1e434f'; g2.lineWidth = 1;
+    for (let i=0;i<NT;i++){
+      const px = Math.round(x(tone(active,i))) + .5;
+      g2.beginPath(); g2.moveTo(px,0); g2.lineTo(px,H); g2.stroke();
+    }
+    g2.strokeStyle = '#2c5f6e';
+    const pp = Math.round(x(BANDS[active].pre)) + .5;
+    g2.beginPath(); g2.moveTo(pp,0); g2.lineTo(pp,H); g2.stroke();
+  }
+
+  // marcas de kHz
+  g2.fillStyle = '#4d7681'; g2.font = '11px "IBM Plex Mono", monospace';
+  for (let k=14; k<=21; k++){
+    const px = x(k*1000);
+    g2.fillRect(px, H-6, 1, 6);
+    if (k%2===0) g2.fillText(k+'k', px+4, H-10);
+  }
+
+  if (running){
+    g2.beginPath(); g2.moveTo(0,H);
+    const b0 = binOf(FMIN), b1 = binOf(FMAX);
+    for (let b=b0; b<=b1; b++){
+      const f = b * (rxCtx.sampleRate / analyser.fftSize);
+      g2.lineTo(x(f), y(freqData[b]));
+    }
+    g2.lineTo(W,H); g2.closePath();
+    g2.fillStyle = 'rgba(255,179,64,.13)'; g2.fill();
+    g2.strokeStyle = '#ffb340'; g2.lineWidth = 1.4;
+    g2.stroke();
+
+    if (litFreq && marginDb > +$('thr').value){
+      const px = x(litFreq);
+      g2.fillStyle = '#5fd9b4';
+      g2.fillRect(px-1.5, 0, 3, H);
+    }
+  }
+}
+window.addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>
