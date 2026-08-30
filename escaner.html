@@ -4,6 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Escáner de SIM</title>
+<link rel="manifest" href="/escaner.webmanifest">
+<meta name="theme-color" content="#17151c">
+<link rel="icon" type="image/svg+xml" href="/icono-escaner.svg">
+<link rel="apple-touch-icon" href="/icono-escaner.svg">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Escáner">
+<script>
+/* que se pueda instalar y abrir sin cobertura */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/sw-escaner.js').catch(function () {});
+  });
+}
+</script>
 <style>
   :root{
     --fondo:#17151c; --sup:#221f2a; --linea:#3a3546;
