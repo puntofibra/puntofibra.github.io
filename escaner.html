@@ -86,6 +86,534 @@ if ('serviceWorker' in navigator) {
   .aviso{margin:0;padding:12px 18px;font-size:14px;line-height:1.5;min-height:20px;color:var(--rojo)}
   .aviso.bien{color:var(--verde)}
   .vacio{padding:26px 18px;color:var(--tenue);font-size:15px;line-height:1.6}
+.lote select{width:100%;font:500 16px/1.2 inherit;color:var(--texto);background:var(--sup);border:1px solid var(--linea);border-radius:6px;padding:13px}
+.lote select:focus{outline:none;border-color:var(--azul)}
+.codigo{font:700 26px/1 var(--mono);letter-spacing:.14em;color:var(--azul);background:var(--sup);border:1px solid var(--linea);border-radius:6px;padding:14px 13px}
+.panel{position:fixed;inset:0;background:rgba(0,0,0,.65);display:grid;place-items:center;padding:18px;z-index:9}
+.panel .caja{background:var(--sup);border:1px solid var(--linea);border-radius:10px;padding:18px;width:100%;max-width:420px;max-height:80vh;overflow:auto}
+.panel h2{margin:0 0 12px;font-size:17px}
+.panel ul{list-style:none;padding:0;margin:0 0 14px}
+.panel li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-top:1px solid var(--linea)}
+.panel li button{background:transparent;color:var(--tenue);border:none;font-size:19px;padding:4px 2px}
+.panel .fila{display:flex;gap:8px;margin-bottom:14px}
+.panel .fila input{flex:1;min-width:0;font:500 16px/1.2 inherit;color:var(--texto);background:var(--fondo);border:1px solid var(--linea);border-radius:6px;padding:12px}
+.panel .vacia{color:var(--tenue);font-size:14px;padding:10px 0}
+</style>
+</head>
+<body>
+
+<div class="visor" id="visor">
+  <video id="video" playsinline muted></video>
+  <div class="apagado" id="apagado">Pulsa empezar y enfoca el código de barras de la SIM.</div>
+  <div class="util" id="util">
+    <button id="luz" title="Linterna" hidden>&#9728;</button>
+    <button id="ajustes" title="Ajustes">&#9881;</button>
+  </div>
+</div>
+
+<div class="marcador">
+  <b id="total">0</b><span>leídas</span>
+  <span class="pend limpio" id="pend">todo subido</span>
+</div>
+
+<div class="barra">
+  <button id="camara">Empezar a escanear</button>
+  <button class="sec" id="subir">Subir ahora</button>
+  <button class="sec" id="nuevo">Lote nuevo</button>
+</div>
+
+<div class="lote">
+  <label for="operador">Operador</label>
+  <select id="operador"><option value="">Elige un operador</option></select>
+  <label style="margin-top:14px">Lote</label>
+  <div class="codigo" id="codigoLote">—</div>
+</div>
+
+<div class="panel" id="panel" hidden>
+<div class="caja">
+<h2>Operadores</h2>
+<ul id="listaOps"></ul>
+<div class="fila"><input id="nuevoOp" maxlength="30" placeholder="Nuevo operador"><button id="addOp">Añadir</button></div>
+<button class="sec" id="cerrarPanel">Cerrar</button>
+</div>
+</div>
+
+<p class="aviso" id="aviso"></p>
+
+<ul id="lista"></ul>
+<p class="vacio" id="vacio">Todavía no has leído ninguna SIM.</p>
+
+<script>
+/* ================= AJUSTA ESTO ================= */
+const EXEC = 'https://script.google.com/macros/s/AKfycbwC12K90iCZ_mqqzOgVstK2_yhEaqkkaa70H4-LlqPsXBoUSVA1xdPoBPLnnj3_X_9Y/exec';
+/* =============================================== */
+
+const FORMATOS = ['code_128', 'code_39', 'itf', 'ean_13'];
+const ZXING_CDN = 'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js';
+const ESPERA_REPE = 2500;   // no repetir la misma SIM antes de 2,5 s
+const TROZO = 25;           // ICCID por llamada JSONP
+
+const $ = function (id) { return document.getElementById(id); };
+
+/* ---------- estado ---------- */
+let lote = JSON.parse(localStorage.getItem('sim_lote') || 'null') || nuevoLote();
+let dev = localStorage.getItem('sim_dev');
+if (!dev) {
+  dev = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()).replace(/[^a-z0-9]/gi, '');
+  localStorage.setItem('sim_dev', dev);
+}
+
+function nuevoLote() {
+  return { codigo: '', operador: '', creado: Date.now(), items: [] };
+}
+function guardarLocal() {
+  lote.operador = $('operador').value;
+  
+  localStorage.setItem('sim_lote', JSON.stringify(lote));
+}
+
+/* ---------- validación ---------- */
+function luhn(s) {
+  let suma = 0, doble = false;
+  for (let i = s.length - 1; i >= 0; i--) {
+    let d = +s[i];
+    if (doble) { d *= 2; if (d > 9) d -= 9; }
+    suma += d; doble = !doble;
+  }
+  return suma % 10 === 0;
+}
+
+function validar(bruto) {
+  const d = String(bruto).replace(/\D/g, '');
+  if (d.length < 18 || d.length > 20) return { ok: false, motivo: 'Eso no es un ICCID: ' + d.length + ' dígitos.' };
+  if (d.slice(0, 2) !== '89') return { ok: false, motivo: 'Un ICCID empieza por 89 y este no.' };
+  return { ok: true, iccid: d, control: luhn(d) };
+}
+
+/* el 89 y el país aparte, que es lo que miras de un vistazo */
+function bonito(ic) {
+  return '<i>' + ic.slice(0, 2) + '</i> ' + ic.slice(2, 4) + ' ' +
+         ic.slice(4).replace(/(\d{4})(?=\d)/g, '$1 ');
+}
+
+/* ---------- cámara ---------- */
+let stream = null, track = null, corriendo = false;
+let detector = null, zxing = null, canvas = null, cctx = null;
+let ultimoValor = '', ultimoAt = 0, zoomNivel = 0;
+
+async function empezar() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+    });
+  } catch (err) {
+    return decir('No hay permiso de cámara, o la página no va por HTTPS.', false);
+  }
+  track = stream.getVideoTracks()[0];
+  $('video').srcObject = stream;
+  await $('video').play();
+  $('apagado').style.display = 'none';
+  $('util').hidden = false;
+  prepararUtiles();
+
+  if ('BarcodeDetector' in window) {
+    const soporta = await BarcodeDetector.getSupportedFormats();
+    detector = new BarcodeDetector({ formats: FORMATOS.filter(function (f) { return soporta.indexOf(f) >= 0; }) });
+  } else {
+    await cargarZxing();
+  }
+
+  canvas = document.createElement('canvas');
+  cctx = canvas.getContext('2d', { willReadFrequently: true });
+  corriendo = true;
+  $('camara').textContent = 'Parar';
+  bucle();
+}
+
+function parar() {
+  corriendo = false;
+  if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+  stream = null; track = null;
+  $('apagado').style.display = 'grid';
+  $('luz').hidden = true;
+  $('camara').textContent = 'Empezar a escanear';
+}
+
+/* Safari no trae BarcodeDetector, así que ahí entra ZXing */
+function cargarZxing() {
+  return new Promise(function (res, rej) {
+    const s = document.createElement('script');
+    s.src = ZXING_CDN;
+    s.onload = function () {
+      const pistas = new Map();
+      pistas.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+        ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.CODE_39,
+        ZXing.BarcodeFormat.ITF, ZXing.BarcodeFormat.EAN_13
+      ]);
+      pistas.set(ZXing.DecodeHintType.TRY_HARDER, true);
+      zxing = new ZXing.BrowserMultiFormatReader(pistas);
+      res();
+    };
+    s.onerror = function () { decir('No se ha podido cargar el lector. Comprueba la conexión.', false); rej(); };
+    document.head.appendChild(s);
+  });
+}
+
+async function bucle() {
+  if (!corriendo) return;
+  const v = $('video');
+  if (v.readyState >= 2) {
+    let valor = null;
+    try {
+      if (detector) {
+        const r = await detector.detect(v);
+        if (r.length) valor = r[0].rawValue;
+      } else if (zxing) {
+        canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+        cctx.drawImage(v, 0, 0);
+        try { valor = zxing.decodeFromCanvas(canvas).getText(); } catch (e) { /* nada en el cuadro */ }
+      }
+    } catch (e) { /* seguimos */ }
+    if (valor) pillado(valor);
+  }
+  // ZXing va más justo de CPU, así que se le da aire entre cuadros
+  if (detector) requestAnimationFrame(bucle);
+  else setTimeout(bucle, 120);
+}
+
+function pillado(bruto) {
+  if (!lote.operador) { pitido(false); decir('Elige un operador antes de escanear.', false); return; }
+  const ahora = performance.now();
+  if (bruto === ultimoValor && ahora - ultimoAt < ESPERA_REPE) return;
+  ultimoValor = bruto; ultimoAt = ahora;
+
+  const v = validar(bruto);
+  if (!v.ok) { pitido(false); decir(v.motivo, false); return; }
+  if (lote.items.some(function (it) { return it.iccid === v.iccid; })) {
+    pitido(false);
+    decir('Esa SIM ya está en el lote.', false);
+    return;
+  }
+
+  lote.items.unshift({ iccid: v.iccid, control: v.control, ts: Date.now(), estado: 'pend' });
+  guardarLocal(); pintar(); pitido(true);
+  $('visor').classList.remove('pillado'); void $('visor').offsetWidth; $('visor').classList.add('pillado');
+  decir(v.control ? 'Leída y verificada.' : 'Leída, pero el dígito de control no cuadra. Míralo antes de subirla.', v.control);
+  subir();
+}
+
+/* ---------- utilidades de cámara, solo donde el navegador las da ---------- */
+function prepararUtiles() {
+  const cap = track.getCapabilities ? track.getCapabilities() : {};
+  $('luz').hidden = !cap.torch;
+  $('ajustes').hidden = false;
+}
+$('luz').onclick = function () {
+  const encendida = this.classList.toggle('on');
+  track.applyConstraints({ advanced: [{ torch: encendida }] }).catch(function () {});
+};
+const _zoomViejo = function () {
+  const cap = track.getCapabilities();
+  if (!cap.zoom) return;
+  const pasos = [cap.min, (cap.min + cap.max) / 3, (cap.min + cap.max) / 2];
+  zoomNivel = (zoomNivel + 1) % pasos.length;
+  this.classList.toggle('on', zoomNivel > 0);
+  track.applyConstraints({ advanced: [{ zoom: pasos[zoomNivel] }] }).catch(function () {});
+};
+
+/* ---------- sonido y aviso ---------- */
+let actx = null;
+function pitido(bien) {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = 'square'; o.frequency.value = bien ? 1760 : 320;
+    o.connect(g); g.connect(actx.destination);
+    const t = actx.currentTime;
+    g.gain.setValueAtTime(0.001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.001, t + (bien ? 0.09 : 0.24));
+    o.start(t); o.stop(t + 0.26);
+  } catch (e) {}
+  if (navigator.vibrate) navigator.vibrate(bien ? 35 : [50, 60, 50]);
+}
+function decir(txt, bien) {
+  const a = $('aviso');
+  a.textContent = txt;
+  a.className = 'aviso' + (bien ? ' bien' : '');
+}
+
+/* ---------- subida ---------- */
+function llamar(params) {
+  return new Promise(function (res, rej) {
+    const cb = 'cb' + Math.random().toString(36).slice(2);
+    const s = document.createElement('script');
+    const limpia = function () { delete window[cb]; s.remove(); };
+    const reloj = setTimeout(function () { limpia(); rej(new Error('sin_respuesta')); }, 20000);
+    window[cb] = function (d) { clearTimeout(reloj); limpia(); res(d); };
+    s.onerror = function () { clearTimeout(reloj); limpia(); rej(new Error('sin_red')); };
+    params.callback = cb;
+    s.src = EXEC + '?' + Object.keys(params).map(function (k) {
+      return k + '=' + encodeURIComponent(params[k]);
+    }).join('&');
+    document.body.appendChild(s);
+  });
+}
+
+let subiendo = false;
+async function subir() {
+  if (subiendo) return;
+  if (!lote.operador) { decir('Elige un operador antes de subir.', false); return; }
+  const pend = lote.items.filter(function (it) { return it.estado === 'pend' || it.estado === 'err'; });
+  if (!pend.length) { pintar(); return; }
+  subiendo = true;
+  try {
+    for (let i = 0; i < pend.length; i += TROZO) {
+      const trozo = pend.slice(i, i + TROZO);
+      const r = await llamar({
+        fn: 'guardar',
+        lote: lote.codigo || 'sin lote',
+        dev: dev,
+        lista: trozo.map(function (it) { return it.iccid; }).join(','),
+        control: trozo.map(function (it) { return it.control ? '1' : '0'; }).join(','),
+          op: lote.operador || ''
+      });
+      if (r && r.ok) {
+        r.res.forEach(function (x) {
+          const it = lote.items.filter(function (y) { return y.iccid === x.iccid; })[0];
+          if (it) it.estado = x.estado === 'duplicado' ? 'dup' : 'ok';
+        });
+      } else {
+        trozo.forEach(function (it) { it.estado = 'err'; });
+      }
+      guardarLocal(); pintar();
+    }
+  } catch (err) {
+    pend.forEach(function (it) { if (it.estado === 'pend') it.estado = 'err'; });
+    guardarLocal(); pintar();
+  } finally {
+    subiendo = false;
+  }
+}
+
+/* ---------- operadores y lote ---------- */
+let operadores = [];
+
+async function arrancar() {
+  pintarLote();
+  try {
+    const r = await llamar({ fn: 'operadores' });
+    if (r && r.ok) { operadores = r.operadores || []; pintarOperadores(); }
+  } catch (e) { decir('No he podido cargar los operadores.', false); }
+  if (!lote.codigo) pedirLote();
+}
+
+function pintarOperadores() {
+  const s = $('operador');
+  s.innerHTML = '<option value="">Elige un operador</option>';
+  operadores.forEach(function (o) {
+    const op = document.createElement('option');
+    op.value = o; op.textContent = o;
+    s.appendChild(op);
+  });
+  if (operadores.indexOf(lote.operador) < 0) lote.operador = '';
+  s.value = lote.operador || '';
+  const ul = $('listaOps');
+  ul.innerHTML = '';
+  if (!operadores.length) {
+    const p = document.createElement('li');
+    p.className = 'vacia';
+    p.textContent = 'Todavía no hay operadores dados de alta.';
+    ul.appendChild(p);
+  }
+  operadores.forEach(function (o) {
+    const li = document.createElement('li');
+    li.appendChild(document.createTextNode(o));
+    const b = document.createElement('button');
+    b.textContent = '×'; b.title = 'Quitar de la lista';
+    b.onclick = function () { quitarOperador(o); };
+    li.appendChild(b);
+    ul.appendChild(li);
+  });
+}
+
+function pintarLote() {
+  $('codigoLote').textContent = lote.codigo || '—';
+}
+
+async function pedirLote() {
+  try {
+    const r = await llamar({ fn: 'nuevoLote' });
+    if (r && r.ok) { lote.codigo = r.lote; guardarLocal(); pintarLote(); decir('Lote ' + r.lote, true); }
+    else decir('No he podido pedir un lote nuevo.', false);
+  } catch (e) { decir('Sin conexión: no he podido pedir un lote nuevo.', false); }
+}
+
+async function altaOperador() {
+  const n = $('nuevoOp').value.trim();
+  if (!n) return;
+  try {
+    const r = await llamar({ fn: 'altaOperador', nombre: n });
+    if (r && r.ok) { operadores = r.operadores || []; $('nuevoOp').value = ''; pintarOperadores(); }
+    else decir('No he podido guardar el operador.', false);
+  } catch (e) { decir('Sin conexión: el operador no se ha guardado.', false); }
+}
+
+async function quitarOperador(n) {
+  if (!confirm('¿Quitar ' + n + ' de la lista?')) return;
+  try {
+    const r = await llamar({ fn: 'bajaOperador', nombre: n });
+    if (r && r.ok) { operadores = r.operadores || []; pintarOperadores(); }
+  } catch (e) {}
+}
+
+/* ---------- pintado ---------- */
+const NOTAS = { pend: 'esperando', ok: 'en la hoja', dup: 'ya estaba', err: 'sin subir' };
+
+function pintar() {
+  const ul = $('lista');
+  ul.innerHTML = '';
+  lote.items.forEach(function (it, idx) {
+    const li = document.createElement('li');
+    li.innerHTML =
+      '<span class="marca m-' + it.estado + '"></span>' +
+      '<span class="num">' + bonito(it.iccid) + '</span>' +
+      '<span class="nota' + (it.control ? '' : ' aviso') + '">' +
+        (it.control ? NOTAS[it.estado] : 'control ✗') + '</span>';
+    const b = document.createElement('button');
+    b.textContent = '×';
+    b.title = 'Quitar del lote';
+    b.onclick = function () { lote.items.splice(idx, 1); guardarLocal(); pintar(); };
+    li.appendChild(b);
+    ul.appendChild(li);
+  });
+  $('vacio').style.display = lote.items.length ? 'none' : 'block';
+  $('total').textContent = lote.items.length;
+
+  const pend = lote.items.filter(function (it) { return it.estado === 'pend' || it.estado === 'err'; }).length;
+  $('pend').textContent = pend ? pend + ' sin subir' : 'todo subido';
+  $('pend').className = 'pend' + (pend ? '' : ' limpio');
+
+  $('subir').hidden = !pend;
+  $('subir').textContent = 'Reintentar (' + pend + ')';
+}
+
+/* ---------- botones ---------- */
+$('camara').onclick = function () { corriendo ? parar() : empezar(); };
+$('subir').onclick = function () { decir('Subiendo…', true); subir(); };
+$('nuevo').onclick = function () {
+  const pend = lote.items.filter(function (it) { return it.estado === 'pend' || it.estado === 'err'; }).length;
+  if (pend && !confirm('Quedan ' + pend + ' sin subir. ¿Empezar un lote nuevo igualmente?')) return;
+  lote = nuevoLote();
+  $('operador').value = '';
+  pedirLote();
+  guardarLocal(); pintar(); decir('', true);
+};
+$('operador').onchange = function () { guardarLocal(); decir(lote.operador ? 'Operador: ' + lote.operador : 'Elige un operador.', !!lote.operador); };
+$('ajustes').onclick = function () { $('panel').hidden = false; };
+$('cerrarPanel').onclick = function () { $('panel').hidden = true; };
+$('addOp').onclick = altaOperador;
+
+window.addEventListener('online', subir);
+document.addEventListener('visibilitychange', function () {
+  if (document.hidden && corriendo) parar();   // no dejar la cámara encendida en segundo plano
+});
+
+arrancar();
+
+pintar();
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Escáner de SIM</title>
+<link rel="manifest" href="/escaner.webmanifest">
+<meta name="theme-color" content="#17151c">
+<link rel="icon" type="image/svg+xml" href="/icono-escaner.svg">
+<link rel="apple-touch-icon" href="/icono-escaner.svg">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Escáner">
+<script>
+/* que se pueda instalar y abrir sin cobertura */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/sw-escaner.js').catch(function () {});
+  });
+}
+</script>
+<style>
+  :root{
+    --fondo:#17151c; --sup:#221f2a; --linea:#3a3546;
+    --texto:#ece8f0; --tenue:#8f8899;
+    --azul:#4cc2ff; --verde:#58d68d; --ambar:#f5c451; --rojo:#ff6b6b;
+    --mono:ui-monospace,'SF Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--fondo);color:var(--texto);
+    font-family:system-ui,sans-serif;-webkit-text-size-adjust:100%;
+    overscroll-behavior:none}
+  body{padding-bottom:env(safe-area-inset-bottom)}
+
+  /* la ventana es ancha y baja porque un código de barras lo es */
+  .visor{position:relative;background:#000;aspect-ratio:16/9;overflow:hidden}
+  video{width:100%;height:100%;object-fit:cover;display:block}
+  .mira{position:absolute;inset:18% 8%;border:2px solid rgba(255,255,255,.35);border-radius:6px}
+  .mira::after{content:'';position:absolute;left:0;right:0;top:50%;height:2px;background:var(--rojo);opacity:.8}
+  .visor.pillado{animation:destello .22s ease-out}
+  @keyframes destello{from{box-shadow:inset 0 0 0 8px var(--verde)}to{box-shadow:none}}
+  @media (prefers-reduced-motion:reduce){.visor.pillado{animation:none}}
+
+  .apagado{position:absolute;inset:0;display:grid;place-items:center;text-align:center;
+    padding:22px;color:var(--tenue);font-size:15px;line-height:1.6}
+
+  .util{position:absolute;right:12px;bottom:12px;display:flex;gap:8px}
+  .util button{width:46px;height:46px;border-radius:50%;border:1px solid rgba(255,255,255,.3);
+    background:rgba(0,0,0,.45);color:#fff;font-size:19px;padding:0;backdrop-filter:blur(6px)}
+  .util button.on{background:var(--ambar);color:#17151c;border-color:var(--ambar)}
+
+  .marcador{display:flex;align-items:baseline;gap:10px;padding:16px 18px 6px}
+  .marcador b{font-size:34px;font-variant-numeric:tabular-nums;line-height:1}
+  .marcador span{color:var(--tenue);font-size:14px}
+  .marcador .pend{margin-left:auto;font-size:13px;color:var(--ambar)}
+  .marcador .pend.limpio{color:var(--verde)}
+
+  .barra{display:flex;gap:8px;padding:8px 18px 14px;flex-wrap:wrap}
+  button{font:600 15px/1 inherit;color:var(--fondo);background:var(--azul);
+    border:none;border-radius:6px;padding:14px 18px;cursor:pointer}
+  button.sec{background:transparent;color:var(--texto);border:1px solid var(--linea);font-weight:500}
+  button:disabled{opacity:.4}
+  button:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
+
+  .lote{padding:0 18px 12px}
+  .lote input{width:100%;font:500 16px/1.2 inherit;color:var(--texto);background:var(--sup);
+    border:1px solid var(--linea);border-radius:6px;padding:13px}
+  .lote input:focus{outline:none;border-color:var(--azul)}
+  .lote label{display:block;font-size:13px;color:var(--tenue);margin:0 0 7px}
+
+  ul{list-style:none;margin:0;padding:0 18px 30px}
+  li{display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--linea)}
+  li .num{font-family:var(--mono);font-size:15px;letter-spacing:.02em;flex:1;
+    font-variant-numeric:tabular-nums;word-break:break-all}
+  li .num i{font-style:normal;color:var(--tenue)}
+  li .marca{width:9px;height:9px;border-radius:50%;flex:none}
+  .m-pend{background:var(--tenue)}
+  .m-ok{background:var(--verde)}
+  .m-dup{background:var(--ambar)}
+  .m-err{background:var(--rojo)}
+  li .nota{font-size:12px;color:var(--tenue);white-space:nowrap}
+  li .nota.aviso{color:var(--ambar)}
+  li button{background:transparent;color:var(--tenue);border:none;padding:6px 2px;font-size:19px}
+
+  .aviso{margin:0;padding:12px 18px;font-size:14px;line-height:1.5;min-height:20px;color:var(--rojo)}
+  .aviso.bien{color:var(--verde)}
+  .vacio{padding:26px 18px;color:var(--tenue);font-size:15px;line-height:1.6}
 </style>
 </head>
 <body>
