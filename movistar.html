@@ -87,6 +87,17 @@ button:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
 /* mientras no se marca la llamada, los numeros van tachados */
 .sim.pendiente .valor{text-decoration:line-through;opacity:.8}
 
+/* el boton parpadea en amarillo para recordar que falta llamarla */
+.sim.pendiente .pie button{background:var(--ambar);color:#2b2100;border:none;font-weight:700;
+  animation:recordar 1.3s ease-in-out infinite}
+@keyframes recordar{
+  0%,100%{background:var(--ambar);box-shadow:0 0 0 0 rgba(245,196,81,.65);transform:scale(1)}
+  50%{background:#ffe08a;box-shadow:0 0 0 8px rgba(245,196,81,0);transform:scale(1.04)}
+}
+@media (prefers-reduced-motion:reduce){
+  .sim.pendiente .pie button{animation:none}
+}
+
 /* telefono copiado: se queda en amarillo para acordarse de copiar luego el ICCID */
 .sim.marcada{background:linear-gradient(140deg,#ffd54a 0%,#e9a900 78%);color:#2b2100}
 .sim.marcada .logo{filter:brightness(0) saturate(100%) opacity(.85)}
@@ -287,7 +298,7 @@ function pintar() {
 
     if (s.estado === 'pendiente') {
       const b = document.createElement('button');
-      b.textContent = 'SIM llamada';
+      b.textContent = 'SIM llamada?';
       b.onclick = function () { verificar(s); };
       pie.appendChild(b);
     } else if (s.estado === 'usada') {
