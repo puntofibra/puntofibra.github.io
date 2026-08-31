@@ -26,6 +26,18 @@ button.sec{background:transparent;color:var(--texto);border:1px solid var(--line
 button:disabled{opacity:.45;cursor:default}
 button:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
 
+.vivo{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--tenue);
+  border:1px solid var(--linea);border-radius:99px;padding:8px 14px}
+.vivo.roto{color:var(--rojo);border-color:rgba(255,107,107,.5)}
+.latido{width:8px;height:8px;border-radius:50%;background:var(--verde);
+  box-shadow:0 0 0 0 rgba(88,214,141,.7);animation:latir 2s infinite}
+.vivo.roto .latido{background:var(--rojo);animation:none}
+@keyframes latir{
+  0%{box-shadow:0 0 0 0 rgba(88,214,141,.55)}
+  70%{box-shadow:0 0 0 7px rgba(88,214,141,0)}
+  100%{box-shadow:0 0 0 0 rgba(88,214,141,0)}
+}
+
 .aviso{margin:0;padding:6px 26px 0;min-height:22px;font-size:14px;color:var(--ambar)}
 .aviso.bien{color:var(--verde)}
 .aviso.mal{color:var(--rojo)}
@@ -33,13 +45,13 @@ button:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
 .rejilla{display:grid;gap:18px;padding:18px 26px 40px;
   grid-template-columns:repeat(auto-fill,minmax(310px,1fr))}
 
-.sim{position:relative;border-radius:14px;padding:40px 18px 18px;overflow:hidden;
+.sim{position:relative;border-radius:14px;padding:54px 18px 18px;overflow:hidden;
   background:linear-gradient(140deg,var(--azul) 0%,var(--azulo) 78%);
   box-shadow:0 6px 18px rgba(0,0,0,.35);color:#fff}
-.sim .logo{height:50px;width:auto;display:block;margin-bottom:16px}
+.sim .logo{height:62px;width:auto;display:block;margin-bottom:16px}
 
 /* agujero de colgar, centrado arriba */
-.colgador{position:absolute;top:14px;left:50%;transform:translateX(-50%);
+.colgador{position:absolute;top:26px;left:50%;transform:translateX(-50%);
   width:88px;height:19px;border-radius:10px;background:var(--fondo);
   box-shadow:inset 0 2px 3px rgba(0,0,0,.5), 0 1px 0 rgba(255,255,255,.22)}
 .colgador::before{content:'';position:absolute;left:50%;top:-10px;transform:translateX(-50%);
@@ -66,6 +78,13 @@ button:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
 .sim.marcada .dato button:hover:not(:disabled){background:rgba(0,0,0,.24)}
 .sim.marcada .estado{background:rgba(0,0,0,.16)}
 .sim.marcada .pie button{background:rgba(0,0,0,.14);border-color:rgba(0,0,0,.3);color:#2b2100}
+
+/* si ya hay una en amarillo, la siguiente sale morada y la tercera roja,
+   para no confundirse cuando dos personas cogen SIM a la vez */
+.sim.marcada2{background:linear-gradient(140deg,#a78bfa 0%,#6d28d9 78%)}
+.sim.marcada3{background:linear-gradient(140deg,#f87171 0%,#b3261e 78%)}
+.sim.marcada2 .estado .punto{background:#ede9fe}
+.sim.marcada3 .estado .punto{background:#fee2e2}
 
 .estado{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;
   padding:6px 11px;border-radius:99px;background:rgba(0,0,0,.28)}
@@ -100,7 +119,7 @@ button:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
   <h1>Movistar prepago</h1>
   <span class="cuenta" id="cuenta"></span>
   <div class="der">
-    <button class="sec" id="recargar">Actualizar</button>
+    <span class="vivo" id="vivo"><span class="latido"></span>En directo</span>
   </div>
 </header>
 
@@ -208,12 +227,26 @@ function ordenadas() {
   return sinUsar.concat(usadas);
 }
 
+/* el amarillo manda: la primera que se copio va en amarillo, la siguiente
+   morada y de la tercera en adelante rojas. Al terminar una, las demas suben. */
+function turnoAmarillas() {
+  return sims.filter(function (s) { return s.estado === 'marcada'; })
+    .sort(function (a, b) { return (a.marcadaEn || 0) - (b.marcadaEn || 0); })
+    .map(function (s) { return s.iccid; });
+}
+
 function pintar() {
   const r = $('rejilla');
   r.innerHTML = '';
+  const turno = turnoAmarillas();
   ordenadas().forEach(function (s) {
     const card = document.createElement('div');
-    card.className = 'sim ' + s.estado;
+    let clase = s.estado;
+    if (s.estado === 'marcada') {
+      const i = turno.indexOf(s.iccid);
+      clase = i <= 0 ? 'marcada' : (i === 1 ? 'marcada2' : 'marcada3');
+    }
+    card.className = 'sim ' + clase;
 
     const colgador = document.createElement('div');
     colgador.className = 'colgador';
@@ -225,11 +258,11 @@ function pintar() {
     logo.alt = 'Movistar';
     card.appendChild(logo);
 
-    const bloqueado = s.estado === 'pendiente';
+    const bloqueado = s.estado === 'pendiente' || s.estado === 'usada';
     card.appendChild(bloqueTelefono(s, bloqueado));
     card.appendChild(bloque('ICCID', bonitoIccid(s.iccid), 'icc', 'Copiar', function () {
       copiarIccid(s);
-    }, bloqueado));
+    }, bloqueado, motivoBloqueo(s)));
 
     const pie = document.createElement('div');
     pie.className = 'pie';
@@ -271,8 +304,14 @@ function pintar() {
 
 /* el boton del telefono: un clic copia y deja la tarjeta en amarillo,
    doble clic quita el amarillo sin tocar nada mas */
+function motivoBloqueo(s) {
+  if (s.estado === 'usada') return 'Esta SIM ya está usada. Recupérala si la necesitas otra vez';
+  if (s.estado === 'pendiente') return 'Marca antes la llamada de activación';
+  return '';
+}
+
 function bloqueTelefono(s, desactivado) {
-  const cont = bloque('Teléfono', bonitoTel(s.tel), 'tel', s.tel ? 'Copiar' : '', function () {}, desactivado);
+  const cont = bloque('Teléfono', bonitoTel(s.tel), 'tel', s.tel ? 'Copiar' : '', function () {}, desactivado, motivoBloqueo(s));
   const b = cont.querySelector('button');
   if (!b) return cont;
   let tempo = null;
@@ -288,7 +327,7 @@ function bloqueTelefono(s, desactivado) {
   return cont;
 }
 
-function bloque(etiqueta, valor, clase, textoBoton, alPulsar, desactivado) {
+function bloque(etiqueta, valor, clase, textoBoton, alPulsar, desactivado, motivo) {
   const cont = document.createElement('div');
   const et = document.createElement('div');
   et.className = 'etiqueta';
@@ -305,7 +344,7 @@ function bloque(etiqueta, valor, clase, textoBoton, alPulsar, desactivado) {
     const b = document.createElement('button');
     b.textContent = textoBoton;
     b.disabled = !!desactivado;
-    b.title = desactivado ? 'Marca antes la llamada de activación' : '';
+    b.title = desactivado ? (motivo || '') : '';
     b.onclick = function () { alPulsar(); };
     fila.appendChild(b);
   }
@@ -315,21 +354,25 @@ function bloque(etiqueta, valor, clase, textoBoton, alPulsar, desactivado) {
 
 /* ---------- acciones ---------- */
 async function copiarTelefono(s) {
+  if (s.estado === 'usada') {
+    decir('Esa SIM ya está usada. Pulsa "Recuperar SIM" si la necesitas otra vez.', 'mal');
+    return;
+  }
   const ok = await copiar(s.tel);
   decir(ok ? 'Teléfono ' + bonitoTel(s.tel) + ' copiado.' : 'No he podido copiar.', ok ? 'bien' : 'mal');
 }
 
 async function copiarIccid(s) {
+  if (s.estado === 'usada') {
+    decir('Esa SIM ya está usada. Pulsa "Recuperar SIM" si la necesitas otra vez.', 'mal');
+    return;
+  }
   if (s.estado === 'pendiente') {
     decir('Esa SIM sigue pendiente de la llamada. Pulsa "Marcar como llamada" antes de usarla.', 'mal');
     return;
   }
   const ok = await copiar(s.iccid);
   if (!ok) { decir('No he podido copiar el ICCID.', 'mal'); return; }
-  if (s.estado === 'usada') {
-    decir('ICCID copiado. Esa SIM ya estaba marcada como usada.', 'bien');
-    return;
-  }
   decir('ICCID copiado. Marcando la SIM como usada…', 'bien');
   await cambiarEstado(s, 'usada', 'ICCID copiado y SIM marcada como usada.');
 }
@@ -359,41 +402,87 @@ async function recuperar(s) {
 async function cambiarEstado(s, estado, mensajeBien) {
   const antes = s.estado;
   const antesUsada = s.usadaEn || 0;
+  const antesMarcada = s.marcadaEn || 0;
   s.estado = estado;
   s.usadaEn = estado === 'usada' ? Date.now() : 0;
+  s.marcadaEn = estado === 'marcada' ? Date.now() : 0;
   pintar();
   try {
     const r = await llamar({ fn: 'estadoSim', iccid: s.iccid, estado: estado });
-    if (r && r.ok) { decir(mensajeBien, 'bien'); return; }
-    s.estado = antes; s.usadaEn = antesUsada; pintar();
+    if (r && r.ok) { ver = r.ver || ver; decir(mensajeBien, 'bien'); return; }
+    s.estado = antes; s.usadaEn = antesUsada; s.marcadaEn = antesMarcada; pintar();
     decir('El servidor no ha podido guardar el cambio.', 'mal');
   } catch (e) {
-    s.estado = antes; s.usadaEn = antesUsada; pintar();
+    s.estado = antes; s.usadaEn = antesUsada; s.marcadaEn = antesMarcada; pintar();
     decir('Sin conexión con la hoja: el cambio no se ha guardado.', 'mal');
   }
 }
 
-/* ---------- carga ---------- */
-async function cargar() {
-  $('recargar').disabled = true;
-  decir('Leyendo la pestaña Tickets…');
-  try {
-    const r = await llamar({ fn: 'sims' });
-    if (r && r.ok) {
-      sims = r.sims || [];
-      pintar();
-      decir(sims.length ? 'Actualizado.' : 'No hay ninguna SIM en la pestaña Tickets todavía.', 'bien');
-    } else {
-      decir('El servidor no ha devuelto las SIM.', 'mal');
-    }
-  } catch (e) {
-    decir('No he podido conectar con la hoja. Comprueba la conexión y vuelve a intentarlo.', 'mal');
-  }
-  $('recargar').disabled = false;
+/* ---------- carga y sincronizacion en directo ----------
+   Cada pocos segundos se pregunta al servidor si algo ha cambiado (una llamada
+   minuscula). Solo cuando cambia se vuelven a pedir las SIM, asi dos personas
+   con la web abierta ven lo mismo sin tocar ningun boton. */
+const CADA_MIRADA = 8000;   // comprobar si hay cambios
+const CADA_TICKETS = 60000; // releer la pestaña Tickets por si has pegado altas nuevas
+
+let ver = '';
+let ocupado = false;
+let primera = true;
+
+function vivo(bien, texto) {
+  const v = $('vivo');
+  v.className = 'vivo' + (bien ? '' : ' roto');
+  v.lastChild.nodeValue = texto || (bien ? 'En directo' : 'Sin conexión');
 }
 
-$('recargar').onclick = cargar;
-cargar();
+async function cargar(completo) {
+  if (ocupado) return;
+  ocupado = true;
+  if (primera) decir('Leyendo la pestaña Tickets…');
+  try {
+    const params = { fn: 'sims' };
+    if (completo) params.full = '1';
+    const r = await llamar(params);
+    if (r && r.ok) {
+      ver = r.ver || ver;
+      const antes = JSON.stringify(sims);
+      sims = r.sims || [];
+      if (primera || JSON.stringify(sims) !== antes) pintar();
+      vivo(true);
+      if (primera) {
+        decir(sims.length ? '' : 'No hay ninguna SIM en la pestaña Tickets todavía.', 'bien');
+        primera = false;
+      }
+    } else {
+      vivo(false, 'El servidor no responde bien');
+    }
+  } catch (e) {
+    vivo(false);
+  }
+  ocupado = false;
+}
+
+/* la mirada barata: solo trae un numero de version */
+async function mirar() {
+  if (document.hidden || ocupado) return;
+  try {
+    const r = await llamar({ fn: 'ver' });
+    if (!r || !r.ok) { vivo(false, 'El servidor no responde bien'); return; }
+    vivo(true);
+    if (r.ver !== ver) await cargar(false);
+  } catch (e) {
+    vivo(false);
+  }
+}
+
+setInterval(mirar, CADA_MIRADA);
+setInterval(function () { if (!document.hidden) cargar(true); }, CADA_TICKETS);
+document.addEventListener('visibilitychange', function () {
+  if (!document.hidden) cargar(true);
+});
+window.addEventListener('online', function () { cargar(true); });
+
+cargar(true);
 </script>
 </body>
 </html>
