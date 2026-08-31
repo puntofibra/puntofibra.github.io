@@ -192,7 +192,7 @@ const LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHoAAAB4CAYAAAA9kebv
 CADA_MIRADA: cada cuanto se pregunta al servidor si algo ha cambiado.
 Es una llamada minuscula (solo trae un numero de version), asi que
 bajarla es barato y hace que los demas vean tus cambios mucho antes. */
-const VERSION = '2026-08-31c';
+const VERSION = '2026-08-31d';
 const CADA_MIRADA = 3000;
 const CADA_TICKETS = 60000; // releer la pestaña Tickets por si has pegado altas nuevas
 const ESPERA_MAX = 15000;   // si el servidor no contesta en 15s, se avisa (antes eran 30)
@@ -234,6 +234,7 @@ document.body.appendChild(s);
 /* ---------- cartel propio ---------- */
 let resolverDialogo = null;
 function confirmar(texto, textoSi) {
+if (resolverDialogo) { const anterior = resolverDialogo; resolverDialogo = null; anterior(false); }
 $('dialogoTexto').textContent = texto;
 $('dialogoSi').textContent = textoSi || 'Aceptar';
 $('dialogo').hidden = false;
@@ -362,9 +363,12 @@ card.appendChild(pie);
 const t = { card: card, tel: tel, icc: icc, est: est, punto: punto, txtEst: txtEst, bAccion: bAccion, sim: s };
 
 /* los botones se crean una vez y ya no se destruyen nunca */
-tel.btn.onclick = function () { pulsarTelefono(t.sim); };
-icc.btn.onclick = function () { copiarIccid(t.sim); };
-bAccion.onclick = function () { accionPie(t.sim); };
+/* guardamos el ICCID, NUNCA el objeto: cada recarga del servidor traia
+objetos nuevos y el que se hubiera quedado guardado aqui se volvia un
+fantasma, se cambiaba el fantasma y la pantalla no se enteraba */
+tel.btn.onclick = function () { pulsarTelefono(t.sim.iccid); };
+icc.btn.onclick = function () { copiarIccid(t.sim.iccid); };
+bAccion.onclick = function () { accionPie(t.sim.iccid); };
 return t;
 }
 
@@ -454,7 +458,15 @@ caja.hidden = false;
 Un clic en Copiar del telefono copia y deja la tarjeta amarilla en el acto,
 sin esperar ni un milisegundo. Para quitar el amarillo hay un boton propio
 en la tarjeta (antes era un doble clic, y por eso al insistir se deshacia). */
-async function pulsarTelefono(s) {
+/* siempre se busca la SIM viva en el momento de actuar, nunca una copia vieja */
+function buscar(iccid) {
+for (var i = 0; i < sims.length; i++) if (sims[i].iccid === iccid) return sims[i];
+return null;
+}
+
+async function pulsarTelefono(iccid) {
+const s = buscar(iccid);
+if (!s) return;
 if (s.estado === 'usada') {
 decir('Esa SIM ya está usada. Pulsa "Recuperar SIM" si la necesitas otra vez.', 'mal');
 return;
@@ -464,14 +476,16 @@ decir('Esa SIM sigue pendiente de la llamada. Pulsa "SIM llamada?" antes de usar
 return;
 }
 if (s.estado === 'libre') {
-cambiarEstado(s, 'marcada', 'Teléfono ' + s.tel + ' copiado. La tarjeta se queda en amarillo hasta que copies el ICCID.');
+cambiarEstado(iccid, 'marcada', 'Teléfono ' + s.tel + ' copiado. La tarjeta se queda en amarillo hasta que copies el ICCID.');
 }
 const ok = await copiar(s.tel);
 if (!ok) decir('No he podido copiar el teléfono.', 'mal');
 else if (s.estado !== 'marcada') decir('Teléfono ' + s.tel + ' copiado.', 'bien');
 }
 
-async function copiarIccid(s) {
+async function copiarIccid(iccid) {
+const s = buscar(iccid);
+if (!s) return;
 if (s.estado === 'usada') {
 decir('Esa SIM ya está usada. Pulsa "Recuperar SIM" si la necesitas otra vez.', 'mal');
 return;
@@ -480,62 +494,76 @@ if (s.estado === 'pendiente') {
 decir('Esa SIM sigue pendiente de la llamada. Pulsa "SIM llamada?" antes de usarla.', 'mal');
 return;
 }
-cambiarEstado(s, 'usada', 'ICCID copiado y SIM marcada como usada.');
+cambiarEstado(iccid, 'usada', 'ICCID copiado y SIM marcada como usada.');
 const ok = await copiar(s.iccid);
 if (!ok) decir('No he podido copiar el ICCID (la SIM sí queda marcada como usada).', 'mal');
 }
 
-async function desmarcarTelefono(s) {
-if (s.estado !== 'marcada') return;
-cambiarEstado(s, 'libre', 'Amarillo quitado.');
+async function desmarcarTelefono(iccid) {
+const s = buscar(iccid);
+if (!s || s.estado !== 'marcada') return;
+cambiarEstado(iccid, 'libre', 'Amarillo quitado.');
 }
 
-async function verificar(s) {
+async function verificar(iccid) {
+let s = buscar(iccid);
+if (!s) return;
 const si = await confirmar('¿Marcar la SIM ' + s.tel + ' como llamada? A partir de ahí se podrá copiar y usar.', 'SIM llamada');
 if (!si) return;
-cambiarEstado(s, 'libre', 'SIM ' + s.tel + ' marcada como llamada, ya se puede usar.');
+s = buscar(iccid); // el cartel puede estar abierto varios segundos: se vuelve a mirar
+if (!s) return;
+cambiarEstado(iccid, 'libre', 'SIM ' + s.tel + ' marcada como llamada, ya se puede usar.');
 }
 
-async function recuperar(s) {
+async function recuperar(iccid) {
+let s = buscar(iccid);
+if (!s) return;
 const si = await confirmar('¿Recuperar la SIM ' + s.tel + '? Dejará de estar marcada como usada.', 'Recuperar');
 if (!si) return;
-cambiarEstado(s, 'libre', 'SIM ' + s.tel + ' recuperada.');
+s = buscar(iccid);
+if (!s) return;
+cambiarEstado(iccid, 'libre', 'SIM ' + s.tel + ' recuperada.');
 }
 
-function accionPie(s) {
-if (s.estado === 'pendiente') verificar(s);
-else if (s.estado === 'usada') recuperar(s);
-else if (s.estado === 'marcada') desmarcarTelefono(s);
+function accionPie(iccid) {
+const s = buscar(iccid);
+if (!s) return;
+if (s.estado === 'pendiente') verificar(iccid);
+else if (s.estado === 'usada') recuperar(iccid);
+else if (s.estado === 'marcada') desmarcarTelefono(iccid);
 }
 
 /* el color cambia YA; guardar en la hoja va por detras y sin bloquear nada */
-function cambiarEstado(s, estado, mensajeBien) {
+function cambiarEstado(iccid, estado, mensajeBien) {
+const s = buscar(iccid);
+if (!s) return Promise.resolve();
 const antes = { e: s.estado, u: s.usadaEn || 0, m: s.marcadaEn || 0 };
 s.estado = estado;
 s.usadaEn = estado === 'usada' ? Date.now() : 0;
 s.marcadaEn = estado === 'marcada' ? Date.now() : 0;
-const n = (turno.get(s.iccid) || 0) + 1;
-turno.set(s.iccid, n);
-enVuelo.set(s.iccid, estado);
+const n = (turno.get(iccid) || 0) + 1;
+turno.set(iccid, n);
+enVuelo.set(iccid, estado);
 pintar();
 decir(mensajeBien, 'bien');
 
-const previa = cola.get(s.iccid) || Promise.resolve();
-const p = previa.then(function () { return guardarEstado(s, estado, antes, n); });
-cola.set(s.iccid, p);
+const previa = cola.get(iccid) || Promise.resolve();
+const p = previa.then(function () { return guardarEstado(iccid, estado, antes, n); });
+cola.set(iccid, p);
 return p;
 }
 
-async function guardarEstado(s, estado, antes, n) {
+async function guardarEstado(iccid, estado, antes, n) {
 let r = null;
 for (let intento = 0; intento < 2 && !r; intento++) {
-try { r = await llamar({ fn: 'estadoSim', iccid: s.iccid, estado: estado }, ESPERA_MAX); }
+try { r = await llamar({ fn: 'estadoSim', iccid: iccid, estado: estado }, ESPERA_MAX); }
 catch (e) { /* un fallo suelto: se reintenta una vez sin molestar */ }
 }
-if (turno.get(s.iccid) !== n) return; // ya has pulsado otra cosa despues: manda esa
-enVuelo.delete(s.iccid);
+if (turno.get(iccid) !== n) return; // ya has pulsado otra cosa despues: manda esa
+enVuelo.delete(iccid);
 if (r && r.ok) { ver = r.ver || ver; pintar(); return; }
-s.estado = antes.e; s.usadaEn = antes.u; s.marcadaEn = antes.m;
+const s = buscar(iccid);
+if (s) { s.estado = antes.e; s.usadaEn = antes.u; s.marcadaEn = antes.m; }
 pintar();
 decir('No se ha podido guardar el cambio en la hoja. Vuelve a pulsar.', 'mal');
 }
@@ -566,19 +594,27 @@ ver = r.ver || ver;
 fallos = 0;
 const antes = JSON.stringify(sims);
 const nuevas = r.sims || [];
-/* lo que estamos guardando ahora mismo manda sobre lo que diga la hoja:
-asi el color no parpadea ni se echa atras a mitad */
-if (enVuelo.size) {
+/* Se ACTUALIZAN los objetos que ya teniamos en vez de tirarlos y poner otros.
+   Antes cada recarga creaba objetos nuevos: si tenias el cartel de confirmar
+   abierto, al aceptar cambiabas un objeto que ya no estaba en la lista, el
+   servidor si se enteraba (los demas lo veian) pero tu pantalla no.
+   Ademas, lo que se este guardando ahora mismo manda sobre lo que diga la
+   hoja, asi el color no parpadea ni se echa atras a mitad. */
+const previos = new Map();
+sims.forEach(function (x) { previos.set(x.iccid, x); });
+const combinadas = [];
 nuevas.forEach(function (n) {
-if (!enVuelo.has(n.iccid)) return;
-const local = sims.filter(function (x) { return x.iccid === n.iccid; })[0];
-if (!local) return;
-n.estado = local.estado;
-n.usadaEn = local.usadaEn;
-n.marcadaEn = local.marcadaEn;
-});
+const viejo = previos.get(n.iccid);
+if (!viejo) { combinadas.push(n); return; }
+viejo.tel = n.tel;
+if (!enVuelo.has(n.iccid)) {
+viejo.estado = n.estado;
+viejo.usadaEn = n.usadaEn || 0;
+viejo.marcadaEn = n.marcadaEn || 0;
 }
-sims = nuevas;
+combinadas.push(viejo);
+});
+sims = combinadas;
 if (primera || JSON.stringify(sims) !== antes) pintar();
 vivo(true);
 if (primera) {
