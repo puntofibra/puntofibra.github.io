@@ -192,6 +192,7 @@ const LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHoAAAB4CAYAAAA9kebv
 CADA_MIRADA: cada cuanto se pregunta al servidor si algo ha cambiado.
 Es una llamada minuscula (solo trae un numero de version), asi que
 bajarla es barato y hace que los demas vean tus cambios mucho antes. */
+const VERSION = '2026-08-31c';
 const CADA_MIRADA = 3000;
 const CADA_TICKETS = 60000; // releer la pestaña Tickets por si has pegado altas nuevas
 const ESPERA_MAX = 15000;   // si el servidor no contesta en 15s, se avisa (antes eran 30)
@@ -285,17 +286,6 @@ usada: 'Usada'
 };
 
 const tarjetas = new Map(); // iccid -> trozos del DOM de esa tarjeta
-let pulsando = false;
-let repintarPendiente = false;
-
-/* mientras tengas el dedo o el raton apretado no se toca el DOM */
-document.addEventListener('pointerdown', function () { pulsando = true; }, true);
-function soltar() {
-pulsando = false;
-if (repintarPendiente) { repintarPendiente = false; pintar(); }
-}
-document.addEventListener('pointerup', soltar, true);
-document.addEventListener('pointercancel', soltar, true);
 
 function ordenadas() {
 const sinUsar = sims.filter(function (s) { return s.estado !== 'usada'; });
@@ -415,7 +405,6 @@ if (t.bAccion.className !== tc) t.bAccion.className = tc;
 }
 
 function pintar() {
-if (pulsando) { repintarPendiente = true; return; } // no tocamos nada con el dedo apoyado
 const r = $('rejilla');
 const lista = ordenadas();
 const vistos = new Set();
