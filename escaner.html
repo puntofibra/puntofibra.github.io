@@ -85,6 +85,8 @@ button:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
 .panel .fila{display:flex;gap:8px;margin-bottom:14px}
 .panel .fila input{flex:1;min-width:0;font:500 16px/1.2 inherit;color:var(--texto);
   background:var(--fondo);border:1px solid var(--linea);border-radius:6px;padding:12px}
+.panel .txt{margin:0 0 18px;font-size:16px;line-height:1.5}
+.panel .botones{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 
 ul{list-style:none;margin:0;padding:0 18px 30px}
 li{display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--linea)}
@@ -144,6 +146,16 @@ li button{background:transparent;color:var(--tenue);border:none;padding:6px 2px;
       <button id="addOp">Añadir</button>
     </div>
     <button class="sec" id="cerrarPanel">Cerrar</button>
+  </div>
+</div>
+
+<div class="panel" id="dialogo" hidden>
+  <div class="caja">
+    <p class="txt" id="dialogoTexto"></p>
+    <div class="botones">
+      <button class="sec" id="dialogoNo">Cancelar</button>
+      <button id="dialogoSi">Aceptar</button>
+    </div>
   </div>
 </div>
 
@@ -397,6 +409,21 @@ async function subir() {
   }
 }
 
+/* ---------- carteles propios, nada de confirm() del navegador ---------- */
+let resolverDialogo = null;
+
+function confirmar(texto, textoSi) {
+  $('dialogoTexto').textContent = texto;
+  $('dialogoSi').textContent = textoSi || 'Aceptar';
+  $('dialogo').hidden = false;
+  return new Promise(function (res) { resolverDialogo = res; });
+}
+
+function cerrarDialogo(valor) {
+  $('dialogo').hidden = true;
+  if (resolverDialogo) { const r = resolverDialogo; resolverDialogo = null; r(valor); }
+}
+
 /* ---------- operadores y lote ---------- */
 async function arrancar() {
   pintarLote();
@@ -481,7 +508,7 @@ async function altaOperador() {
 }
 
 async function quitarOperador(n) {
-  if (!confirm('¿Quitar ' + n + ' de la lista?')) return;
+  if (!(await confirmar('¿Quitar ' + n + ' de la lista?', 'Quitar'))) return;
   try {
     const r = await llamar({ fn: 'bajaOperador', nombre: n });
     if (r && r.ok) { operadores = r.operadores || []; pintarOperadores(); }
@@ -522,9 +549,9 @@ function pintar() {
 /* ---------- botones ---------- */
 $('camara').onclick = function () { corriendo ? parar() : empezar(); };
 $('subir').onclick = function () { decir('Subiendo…', true); subir(); };
-$('nuevo').onclick = function () {
+$('nuevo').onclick = async function () {
   const pend = lote.items.filter(function (it) { return it.estado === 'pend' || it.estado === 'err'; }).length;
-  if (pend && !confirm('Quedan ' + pend + ' sin subir. ¿Empezar un lote nuevo igualmente?')) return;
+  if (pend && !(await confirmar('Quedan ' + pend + ' sin subir. ¿Empezar un lote nuevo igualmente?', 'Lote nuevo'))) return;
   lote = loteVacio();
   $('operador').value = '';
   guardarLocal(); pintar(); pintarLote(); decir('', true);
@@ -537,6 +564,10 @@ $('operador').onchange = function () {
 $('ajustes').onclick = function () { $('panel').hidden = false; };
 $('cerrarPanel').onclick = function () { $('panel').hidden = true; };
 $('addOp').onclick = altaOperador;
+$('panel').onclick = function (e) { if (e.target === $('panel')) $('panel').hidden = true; };
+$('dialogoSi').onclick = function () { cerrarDialogo(true); };
+$('dialogoNo').onclick = function () { cerrarDialogo(false); };
+$('dialogo').onclick = function (e) { if (e.target === $('dialogo')) cerrarDialogo(false); };
 $('nuevoOp').onkeydown = function (e) { if (e.key === 'Enter') altaOperador(); };
 
 window.addEventListener('online', subir);
