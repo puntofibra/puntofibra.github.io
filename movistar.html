@@ -38,6 +38,22 @@ button:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
   100%{box-shadow:0 0 0 0 rgba(88,214,141,0)}
 }
 
+.alerta{display:flex;gap:14px;align-items:flex-start;margin:14px 26px 4px;padding:16px 18px;
+  border-radius:12px;background:linear-gradient(120deg,rgba(245,196,81,.16),rgba(245,196,81,.07));
+  border:1px solid rgba(245,196,81,.45);animation:respirar 2.6s ease-in-out infinite}
+@keyframes respirar{
+  0%,100%{border-color:rgba(245,196,81,.4);box-shadow:0 0 0 0 rgba(245,196,81,0)}
+  50%{border-color:rgba(245,196,81,.85);box-shadow:0 0 0 4px rgba(245,196,81,.08)}
+}
+.alerta .icono{flex:none;width:30px;height:30px;border-radius:50%;background:var(--ambar);
+  color:#2b2100;font:800 18px/30px system-ui,sans-serif;text-align:center}
+.alerta .texto{display:flex;flex-direction:column;gap:5px;font-size:14px;line-height:1.55}
+.alerta b{color:var(--ambar);font-size:15px}
+.alerta .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.alerta .chips span{font-family:var(--mono);font-size:14px;letter-spacing:.03em;
+  background:rgba(245,196,81,.18);border:1px solid rgba(245,196,81,.4);
+  color:var(--texto);border-radius:8px;padding:6px 10px}
+
 .aviso{margin:0;padding:6px 26px 0;min-height:22px;font-size:14px;color:var(--ambar)}
 .aviso.bien{color:var(--verde)}
 .aviso.mal{color:var(--rojo)}
@@ -79,12 +95,6 @@ button:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
 .sim.marcada .estado{background:rgba(0,0,0,.16)}
 .sim.marcada .pie button{background:rgba(0,0,0,.14);border-color:rgba(0,0,0,.3);color:#2b2100}
 
-/* si ya hay una en amarillo, la siguiente sale morada y la tercera roja,
-   para no confundirse cuando dos personas cogen SIM a la vez */
-.sim.marcada2{background:linear-gradient(140deg,#a78bfa 0%,#6d28d9 78%)}
-.sim.marcada3{background:linear-gradient(140deg,#f87171 0%,#b3261e 78%)}
-.sim.marcada2 .estado .punto{background:#ede9fe}
-.sim.marcada3 .estado .punto{background:#fee2e2}
 
 .estado{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;
   padding:6px 11px;border-radius:99px;background:rgba(0,0,0,.28)}
@@ -122,6 +132,15 @@ button:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
     <span class="vivo" id="vivo"><span class="latido"></span>En directo</span>
   </div>
 </header>
+
+<div class="alerta" id="alerta" hidden>
+  <div class="icono">!</div>
+  <div class="texto">
+    <b>Ojo, hay más de una SIM copiada a la vez</b>
+    <span id="alertaDetalle"></span>
+    <div class="chips" id="alertaChips"></div>
+  </div>
+</div>
 
 <p class="aviso" id="aviso">Cargando…</p>
 
@@ -227,26 +246,18 @@ function ordenadas() {
   return sinUsar.concat(usadas);
 }
 
-/* el amarillo manda: la primera que se copio va en amarillo, la siguiente
-   morada y de la tercera en adelante rojas. Al terminar una, las demas suben. */
-function turnoAmarillas() {
+/* las que estan copiadas ahora mismo, de la mas antigua a la mas nueva */
+function amarillas() {
   return sims.filter(function (s) { return s.estado === 'marcada'; })
-    .sort(function (a, b) { return (a.marcadaEn || 0) - (b.marcadaEn || 0); })
-    .map(function (s) { return s.iccid; });
+    .sort(function (a, b) { return (a.marcadaEn || 0) - (b.marcadaEn || 0); });
 }
 
 function pintar() {
   const r = $('rejilla');
   r.innerHTML = '';
-  const turno = turnoAmarillas();
   ordenadas().forEach(function (s) {
     const card = document.createElement('div');
-    let clase = s.estado;
-    if (s.estado === 'marcada') {
-      const i = turno.indexOf(s.iccid);
-      clase = i <= 0 ? 'marcada' : (i === 1 ? 'marcada2' : 'marcada3');
-    }
-    card.className = 'sim ' + clase;
+    card.className = 'sim ' + s.estado;
 
     const colgador = document.createElement('div');
     colgador.className = 'colgador';
@@ -291,6 +302,7 @@ function pintar() {
     r.appendChild(card);
   });
 
+  pintarAlerta();
   $('vacio').hidden = sims.length > 0;
   const disponibles = sims.filter(function (s) {
     return s.estado === 'libre' || s.estado === 'marcada';
@@ -325,6 +337,25 @@ function bloqueTelefono(s, desactivado) {
     desmarcarTelefono(s);
   };
   return cont;
+}
+
+/* si hay dos o mas copiadas a la vez, todas las webs abiertas lo avisan */
+function pintarAlerta() {
+  const abiertas = amarillas();
+  const caja = $('alerta');
+  if (abiertas.length < 2) { caja.hidden = true; return; }
+  $('alertaDetalle').textContent =
+    (abiertas.length > 2 ? 'Varios compañeros estáis' : 'Otro compañero y tú estáis') +
+    ' con una SIM copiada al mismo tiempo. Antes de pegar el número, mira tu tarjeta amarilla ' +
+    'y comprueba que el teléfono es el tuyo y no el del otro.';
+  const chips = $('alertaChips');
+  chips.innerHTML = '';
+  abiertas.forEach(function (s) {
+    const c = document.createElement('span');
+    c.textContent = s.tel || s.iccid;
+    chips.appendChild(c);
+  });
+  caja.hidden = false;
 }
 
 function bloque(etiqueta, valor, clase, textoBoton, alPulsar, desactivado, motivo) {
