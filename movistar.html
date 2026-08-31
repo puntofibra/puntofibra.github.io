@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Movistar prepago</title>
+<style>
+:root{
+  --fondo:#17151c; --sup:#221f2a; --linea:#3a3546;
+  --texto:#ece8f0; --tenue:#8f8899;
+  --azul:#019df4; --azulo:#0066b3; --verde:#58d68d; --ambar:#f5c451; --rojo:#ff6b6b;
+  --mono:ui-monospace,'SF Mono',Menlo,monospace;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html,body{margin:0;background:var(--fondo);color:var(--texto);font-family:system-ui,sans-serif}
+
+header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:22px 26px 10px}
+header h1{font-size:21px;margin:0}
+header .cuenta{color:var(--tenue);font-size:14px}
+header .der{margin-left:auto;display:flex;gap:8px}
+button{font:600 14px/1 inherit;color:#0b1016;background:var(--azul);border:none;
+  border-radius:6px;padding:11px 15px;cursor:pointer}
+button.sec{background:transparent;color:var(--texto);border:1px solid var(--linea);font-weight:500}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
+
+.aviso{margin:0;padding:6px 26px 0;min-height:22px;font-size:14px;color:var(--ambar)}
+.aviso.bien{color:var(--verde)}
+.aviso.mal{color:var(--rojo)}
+
+.rejilla{display:grid;gap:18px;padding:18px 26px 40px;
+  grid-template-columns:repeat(auto-fill,minmax(310px,1fr))}
+
+.sim{position:relative;border-radius:14px;padding:18px;overflow:hidden;
+  background:linear-gradient(140deg,var(--azul) 0%,var(--azulo) 78%);
+  box-shadow:0 6px 18px rgba(0,0,0,.35);color:#fff}
+.sim .chip{width:44px;height:34px;border-radius:6px;background:rgba(255,255,255,.85);
+  position:relative;margin-bottom:16px}
+.sim .chip::before,.sim .chip::after{content:'';position:absolute;left:6px;right:6px;
+  height:2px;background:rgba(0,0,0,.35)}
+.sim .chip::before{top:11px}
+.sim .chip::after{top:21px}
+
+.sim .marca{position:absolute;top:16px;right:18px;font-size:12px;letter-spacing:.14em;
+  text-transform:uppercase;opacity:.85}
+.sim .etiqueta{font-size:11px;letter-spacing:.12em;text-transform:uppercase;opacity:.8;margin-bottom:4px}
+.sim .dato{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.sim .valor{font-family:var(--mono);font-variant-numeric:tabular-nums;word-break:break-all;flex:1}
+.sim .tel .valor{font-size:25px;font-weight:700;letter-spacing:.04em}
+.sim .icc .valor{font-size:14px;letter-spacing:.02em}
+.sim .dato button{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.4);
+  padding:9px 12px;font-size:13px;white-space:nowrap}
+.sim .dato button:hover{background:rgba(255,255,255,.3)}
+
+.estado{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;
+  padding:6px 11px;border-radius:99px;background:rgba(0,0,0,.28)}
+.estado .punto{width:8px;height:8px;border-radius:50%;background:var(--verde)}
+.estado.pendiente .punto{background:var(--ambar)}
+.estado.usada .punto{background:var(--rojo)}
+.pie{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+.pie button{margin-left:auto}
+
+/* usada: se ve la informacion, pero tachada y con la cruz */
+.sim.usada{filter:grayscale(.55) brightness(.72)}
+.sim.usada .valor{text-decoration:line-through}
+.sim.usada::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:
+    linear-gradient(to bottom right,transparent calc(50% - 2px),rgba(255,80,80,.85) 50%,transparent calc(50% + 2px)),
+    linear-gradient(to bottom left,transparent calc(50% - 2px),rgba(255,80,80,.85) 50%,transparent calc(50% + 2px))}
+
+.vacio{padding:40px 26px;color:var(--tenue);font-size:15px;line-height:1.7}
+.vacio code{font-family:var(--mono);color:var(--texto)}
+
+.panel{position:fixed;inset:0;background:rgba(0,0,0,.65);display:grid;place-items:center;padding:18px;z-index:9}
+.panel .caja{background:var(--sup);border:1px solid var(--linea);border-radius:10px;padding:20px;
+  width:100%;max-width:420px}
+.panel .txt{margin:0 0 18px;font-size:16px;line-height:1.5}
+.panel .botones{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Movistar prepago</h1>
+  <span class="cuenta" id="cuenta"></span>
+  <div class="der">
+    <button class="sec" id="recargar">Actualizar</button>
+  </div>
+</header>
+
+<p class="aviso" id="aviso">Cargando…</p>
+
+<div class="rejilla" id="rejilla"></div>
+<div class="vacio" id="vacio" hidden>
+  No hay ninguna SIM todavía.<br>
+  Pega los tickets de alta en la pestaña <code>Movistar</code> de la hoja y pulsa Actualizar.
+</div>
+
+<div class="panel" id="dialogo" hidden>
+  <div class="caja">
+    <p class="txt" id="dialogoTexto"></p>
+    <div class="botones">
+      <button class="sec" id="dialogoNo">Cancelar</button>
+      <button id="dialogoSi">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= AJUSTA ESTO ================= */
+const EXEC = 'https://script.google.com/macros/s/AKfycbwC12K90iCZ_mqqzOgVstK2_yhEaqkkaa70H4-LlqPsXBoUSVA1xdPoBPLnnj3_X_9Y/exec';
+/* =============================================== */
+
+const $ = function (id) { return document.getElementById(id); };
+let sims = [];
+
+/* ---------- llamadas al backend (JSONP, como el escáner) ---------- */
+function llamar(params) {
+  return new Promise(function (res, rej) {
+    const cb = 'cb' + Math.random().toString(36).slice(2);
+    const s = document.createElement('script');
+    const limpia = function () { delete window[cb]; s.remove(); };
+    const reloj = setTimeout(function () { limpia(); rej(new Error('sin_respuesta')); }, 30000);
+    window[cb] = function (d) { clearTimeout(reloj); limpia(); res(d); };
+    s.onerror = function () { clearTimeout(reloj); limpia(); rej(new Error('sin_red')); };
+    params.callback = cb;
+    s.src = EXEC + '?' + Object.keys(params).map(function (k) {
+      return k + '=' + encodeURIComponent(params[k]);
+    }).join('&');
+    document.body.appendChild(s);
+  });
+}
+
+/* ---------- cartel propio ---------- */
+let resolverDialogo = null;
+function confirmar(texto, textoSi) {
+  $('dialogoTexto').textContent = texto;
+  $('dialogoSi').textContent = textoSi || 'Aceptar';
+  $('dialogo').hidden = false;
+  return new Promise(function (res) { resolverDialogo = res; });
+}
+function cerrarDialogo(valor) {
+  $('dialogo').hidden = true;
+  if (resolverDialogo) { const r = resolverDialogo; resolverDialogo = null; r(valor); }
+}
+$('dialogoSi').onclick = function () { cerrarDialogo(true); };
+$('dialogoNo').onclick = function () { cerrarDialogo(false); };
+$('dialogo').onclick = function (e) { if (e.target === $('dialogo')) cerrarDialogo(false); };
+
+function decir(txt, tono) {
+  const a = $('aviso');
+  a.textContent = txt;
+  a.className = 'aviso' + (tono ? ' ' + tono : '');
+}
+
+/* ---------- copiar ---------- */
+async function copiar(texto) {
+  try {
+    await navigator.clipboard.writeText(texto);
+    return true;
+  } catch (e) {
+    const t = document.createElement('textarea');
+    t.value = texto;
+    t.style.position = 'fixed';
+    t.style.opacity = '0';
+    document.body.appendChild(t);
+    t.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e2) {}
+    t.remove();
+    return ok;
+  }
+}
+
+/* ---------- pintado ---------- */
+const TEXTO_ESTADO = {
+  pendiente: 'Esperando la llamada de activación',
+  libre: 'Lista para usar',
+  usada: 'Usada'
+};
+
+function bonitoIccid(ic) {
+  return ic.replace(/(\d{4})(?=\d)/g, '$1 ');
+}
+function bonitoTel(t) {
+  return t.length === 9 ? t.slice(0, 3) + ' ' + t.slice(3, 6) + ' ' + t.slice(6) : t;
+}
+
+function pintar() {
+  const r = $('rejilla');
+  r.innerHTML = '';
+  sims.forEach(function (s) {
+    const card = document.createElement('div');
+    card.className = 'sim' + (s.estado === 'usada' ? ' usada' : '');
+
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    const marca = document.createElement('div');
+    marca.className = 'marca';
+    marca.textContent = 'Movistar';
+    card.appendChild(marca);
+    card.appendChild(chip);
+
+    card.appendChild(bloque('Teléfono', bonitoTel(s.tel), 'tel', s.tel ? 'Copiar' : '', function () {
+      copiarTelefono(s);
+    }));
+    card.appendChild(bloque('ICCID', bonitoIccid(s.iccid), 'icc', 'Copiar', function () {
+      copiarIccid(s);
+    }));
+
+    const pie = document.createElement('div');
+    pie.className = 'pie';
+    const est = document.createElement('span');
+    est.className = 'estado ' + s.estado;
+    const punto = document.createElement('span');
+    punto.className = 'punto';
+    est.appendChild(punto);
+    est.appendChild(document.createTextNode(TEXTO_ESTADO[s.estado] || s.estado));
+    pie.appendChild(est);
+
+    if (s.estado === 'pendiente') {
+      const b = document.createElement('button');
+      b.textContent = 'Ya está activada';
+      b.onclick = function () { verificar(s); };
+      pie.appendChild(b);
+    } else if (s.estado === 'usada') {
+      const b = document.createElement('button');
+      b.className = 'sec';
+      b.textContent = 'Recuperar SIM';
+      b.style.color = '#fff';
+      b.onclick = function () { recuperar(s); };
+      pie.appendChild(b);
+    }
+    card.appendChild(pie);
+    r.appendChild(card);
+  });
+
+  $('vacio').hidden = sims.length > 0;
+  const libres = sims.filter(function (s) { return s.estado === 'libre'; }).length;
+  const pend = sims.filter(function (s) { return s.estado === 'pendiente'; }).length;
+  const usadas = sims.filter(function (s) { return s.estado === 'usada'; }).length;
+  $('cuenta').textContent = sims.length
+    ? libres + ' listas · ' + pend + ' por activar · ' + usadas + ' usadas'
+    : '';
+}
+
+function bloque(etiqueta, valor, clase, textoBoton, alPulsar) {
+  const cont = document.createElement('div');
+  const et = document.createElement('div');
+  et.className = 'etiqueta';
+  et.textContent = etiqueta;
+  cont.appendChild(et);
+
+  const fila = document.createElement('div');
+  fila.className = 'dato ' + clase;
+  const v = document.createElement('span');
+  v.className = 'valor';
+  v.textContent = valor || '—';
+  fila.appendChild(v);
+  if (textoBoton) {
+    const b = document.createElement('button');
+    b.textContent = textoBoton;
+    b.onclick = function () { alPulsar(); };
+    fila.appendChild(b);
+  }
+  cont.appendChild(fila);
+  return cont;
+}
+
+/* ---------- acciones ---------- */
+async function copiarTelefono(s) {
+  const ok = await copiar(s.tel);
+  decir(ok ? 'Teléfono ' + bonitoTel(s.tel) + ' copiado.' : 'No he podido copiar.', ok ? 'bien' : 'mal');
+}
+
+async function copiarIccid(s) {
+  if (s.estado === 'pendiente') {
+    decir('Esa SIM sigue esperando la llamada de activación. Marca "Ya está activada" antes de usarla.', 'mal');
+    return;
+  }
+  const ok = await copiar(s.iccid);
+  if (!ok) { decir('No he podido copiar el ICCID.', 'mal'); return; }
+  if (s.estado === 'usada') {
+    decir('ICCID copiado. Esa SIM ya estaba marcada como usada.', 'bien');
+    return;
+  }
+  decir('ICCID copiado. Marcando la SIM como usada…', 'bien');
+  await cambiarEstado(s, 'usada', 'ICCID copiado y SIM marcada como usada.');
+}
+
+async function verificar(s) {
+  const si = await confirmar('¿Confirmas que la SIM ' + bonitoTel(s.tel) + ' ya está activada y se puede usar?', 'Sí, está activada');
+  if (!si) return;
+  await cambiarEstado(s, 'libre', 'SIM ' + bonitoTel(s.tel) + ' verificada y lista para usar.');
+}
+
+async function recuperar(s) {
+  const si = await confirmar('¿Recuperar la SIM ' + bonitoTel(s.tel) + '? Dejará de estar marcada como usada.', 'Recuperar');
+  if (!si) return;
+  await cambiarEstado(s, 'libre', 'SIM ' + bonitoTel(s.tel) + ' recuperada.');
+}
+
+async function cambiarEstado(s, estado, mensajeBien) {
+  const antes = s.estado;
+  s.estado = estado;
+  pintar();
+  try {
+    const r = await llamar({ fn: 'estadoSim', iccid: s.iccid, estado: estado });
+    if (r && r.ok) { decir(mensajeBien, 'bien'); return; }
+    s.estado = antes; pintar();
+    decir('El servidor no ha podido guardar el cambio.', 'mal');
+  } catch (e) {
+    s.estado = antes; pintar();
+    decir('Sin conexión con la hoja: el cambio no se ha guardado.', 'mal');
+  }
+}
+
+/* ---------- carga ---------- */
+async function cargar() {
+  $('recargar').disabled = true;
+  decir('Leyendo la pestaña Movistar…');
+  try {
+    const r = await llamar({ fn: 'sims' });
+    if (r && r.ok) {
+      sims = r.sims || [];
+      pintar();
+      decir(sims.length ? 'Actualizado.' : 'No hay ninguna SIM en la pestaña Movistar todavía.', 'bien');
+    } else {
+      decir('El servidor no ha devuelto las SIM.', 'mal');
+    }
+  } catch (e) {
+    decir('No he podido conectar con la hoja. Comprueba la conexión y vuelve a intentarlo.', 'mal');
+  }
+  $('recargar').disabled = false;
+}
+
+$('recargar').onclick = cargar;
+cargar();
+</script>
+</body>
+</html>
