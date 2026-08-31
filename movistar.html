@@ -470,6 +470,7 @@ const CADA_TICKETS = 60000; // releer la pestaña Tickets por si has pegado alta
 let ver = '';
 let ocupado = false;
 let primera = true;
+let fallos = 0;   // no alarmamos al primer tropiezo, Apps Script tarda en despertar
 
 function vivo(bien, texto) {
   const v = $('vivo');
@@ -480,13 +481,14 @@ function vivo(bien, texto) {
 async function cargar(completo) {
   if (ocupado) return;
   ocupado = true;
-  if (primera) decir('Leyendo la pestaña Tickets…');
+  if (primera) { vivo(true, 'Conectando…'); decir('Leyendo la pestaña Tickets…'); }
   try {
     const params = { fn: 'sims' };
     if (completo) params.full = '1';
     const r = await llamar(params);
     if (r && r.ok) {
       ver = r.ver || ver;
+      fallos = 0;
       const antes = JSON.stringify(sims);
       sims = r.sims || [];
       if (primera || JSON.stringify(sims) !== antes) pintar();
@@ -496,12 +498,23 @@ async function cargar(completo) {
         primera = false;
       }
     } else {
-      vivo(false, 'El servidor no responde bien');
+      tropiezo('El servidor no responde bien');
     }
   } catch (e) {
-    vivo(false);
+    tropiezo();
   }
   ocupado = false;
+}
+
+/* un fallo suelto no se enseña: se reintenta y solo se avisa si insiste */
+function tropiezo(texto) {
+  fallos++;
+  if (fallos < 2) {
+    vivo(true, 'Reintentando…');
+    setTimeout(function () { cargar(true); }, 3000);
+    return;
+  }
+  vivo(false, texto);
 }
 
 /* la mirada barata: solo trae un numero de version */
@@ -509,11 +522,12 @@ async function mirar() {
   if (document.hidden || ocupado) return;
   try {
     const r = await llamar({ fn: 'ver' });
-    if (!r || !r.ok) { vivo(false, 'El servidor no responde bien'); return; }
+    if (!r || !r.ok) { tropiezo('El servidor no responde bien'); return; }
+    fallos = 0;
     vivo(true);
     if (r.ver !== ver) await cargar(false);
   } catch (e) {
-    vivo(false);
+    tropiezo();
   }
 }
 
