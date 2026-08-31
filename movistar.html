@@ -259,12 +259,13 @@ function pintar() {
   });
 
   $('vacio').hidden = sims.length > 0;
-  const libres = sims.filter(function (s) { return s.estado === 'libre'; }).length;
-  const marcadas = sims.filter(function (s) { return s.estado === 'marcada'; }).length;
+  const disponibles = sims.filter(function (s) {
+    return s.estado === 'libre' || s.estado === 'marcada';
+  }).length;
   const pend = sims.filter(function (s) { return s.estado === 'pendiente'; }).length;
   const usadas = sims.filter(function (s) { return s.estado === 'usada'; }).length;
   $('cuenta').textContent = sims.length
-    ? libres + ' listas · ' + marcadas + ' en amarillo · ' + pend + ' por llamar · ' + usadas + ' usadas'
+    ? disponibles + ' sims disponibles · ' + pend + ' por llamar · ' + usadas + ' usadas'
     : '';
 }
 
