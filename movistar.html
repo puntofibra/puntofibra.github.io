@@ -388,6 +388,7 @@ const motivo = bloqueado ? motivoBloqueo(s) : '';
 t.tel.btn.hidden = !s.tel;
 t.tel.btn.disabled = bloqueado;
 t.tel.btn.title = motivo;
+t.icc.btn.hidden = !s.iccid || s.estado !== 'marcada';
 t.icc.btn.disabled = bloqueado;
 t.icc.btn.title = motivo;
 
@@ -400,7 +401,7 @@ if (t.txtEst.nodeValue !== texto) t.txtEst.nodeValue = texto;
 let tb = '', tc = '';
 if (s.estado === 'pendiente') { tb = 'SIM llamada?'; tc = ''; }
 else if (s.estado === 'usada') { tb = 'Recuperar SIM'; tc = 'sec'; }
-else if (s.estado === 'marcada') { tb = 'Quitar amarillo'; tc = 'sec'; }
+else if (s.estado === 'marcada') { tb = 'Cancelar'; tc = 'sec'; }
 t.bAccion.hidden = !tb;
 if (tb) {
 if (t.bAccion.textContent !== tb) t.bAccion.textContent = tb;
