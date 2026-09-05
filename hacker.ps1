@@ -145,3 +145,10 @@ Type-Line 'Full control established on remote host.' Cyan 8
 Write-Host ''
 Write-Host 'Cerrando en 6 segundos...' -ForegroundColor DarkGray
 Start-Sleep -Seconds 6
+
+# Cerrar la ventana de la consola de verdad (funciona tambien en Windows Terminal)
+try {
+    $p = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId
+    if ($p) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue }
+} catch {}
+Stop-Process -Id $PID -Force
