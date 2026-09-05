@@ -143,5 +143,5 @@ Write-Host $banner -ForegroundColor Green
 Write-Host ''
 Type-Line 'Full control established on remote host.' Cyan 8
 Write-Host ''
-Write-Host 'Pulsa una tecla para salir...' -ForegroundColor DarkGray
-try { $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown') } catch { Start-Sleep -Seconds 8 }
+Write-Host 'Cerrando en 6 segundos...' -ForegroundColor DarkGray
+Start-Sleep -Seconds 6
