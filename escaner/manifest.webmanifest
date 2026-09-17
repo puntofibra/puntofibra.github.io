@@ -1,26 +1,17 @@
 {
+  "id": "/escaner/",
   "name": "Escáner de SIM",
   "short_name": "Escáner",
   "description": "Lee el ICCID de las SIM con la cámara y lo manda a la hoja de altas.",
   "lang": "es",
-  "start_url": "/escaner.html",
-  "scope": "/",
+  "start_url": "/escaner/",
+  "scope": "/escaner/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#17151c",
   "theme_color": "#17151c",
   "icons": [
-    {
-      "src": "/icono-escaner.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "/icono-escaner.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "maskable"
-    }
+    { "src": "/escaner/icono.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/escaner/icono.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
   ]
 }
