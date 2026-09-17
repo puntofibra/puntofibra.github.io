@@ -147,6 +147,13 @@ width:100%;max-width:420px}
 .panel .txt{margin:0 0 18px;font-size:16px;line-height:1.5}
 .panel .botones{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 </style>
+<link rel="manifest" href="/movistar/manifest.webmanifest">
+<meta name="theme-color" content="#019df4">
+<link rel="apple-touch-icon" href="/movistar/icono.svg">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Movistar">
 </head>
 <body>
 
@@ -699,6 +706,14 @@ window.addEventListener('focus', function () { mirar(); });
 window.addEventListener('online', function () { cargar(true); });
 
 cargar(true);
+</script>
+<script>
+/* Registro del service worker propio de Movistar (ambito /movistar/) */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/movistar/sw.js', { scope: '/movistar/' }).catch(function () {});
+  });
+}
 </script>
 </body>
 </html>
