@@ -1,0 +1,17 @@
+{
+  "id": "/movistar/",
+  "name": "Movistar prepago",
+  "short_name": "Movistar",
+  "description": "Gestión de líneas prepago de Movistar.",
+  "lang": "es",
+  "start_url": "/movistar/",
+  "scope": "/movistar/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#17151c",
+  "theme_color": "#019df4",
+  "icons": [
+    { "src": "/movistar/icono.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/movistar/icono-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
